@@ -700,13 +700,23 @@ iptables -A FORWARD -i ${ETHERNET_INTERFACE} -o ${WIFI_INTERFACE} -m state --sta
 iptables -A FORWARD -i ${WIFI_INTERFACE} -o ${ETHERNET_INTERFACE} -j ACCEPT
 
 # Configure captive portal redirection
-iptables -t nat -N CAPTIVE_PORTAL
+# First, check if chains already exist, if not create them
+iptables -t nat -L CAPTIVE_PORTAL >/dev/null 2>&1 || iptables -t nat -N CAPTIVE_PORTAL
+iptables -t nat -L AUTHENTICATED >/dev/null 2>&1 || iptables -t nat -N AUTHENTICATED
+
+# Flush existing rules in these chains to ensure a clean state
+iptables -t nat -F CAPTIVE_PORTAL 2>/dev/null || true
+iptables -t nat -F AUTHENTICATED 2>/dev/null || true
+
+# Remove existing references to our chains from PREROUTING to avoid duplicates
+iptables -t nat -D PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL 2>/dev/null || true
+iptables -t nat -D PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL 2>/dev/null || true
+iptables -t nat -D CAPTIVE_PORTAL -j AUTHENTICATED 2>/dev/null || true
+
+# Add our rules
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
 iptables -t nat -A CAPTIVE_PORTAL -p tcp -j DNAT --to-destination ${AP_IP}:3000
-
-# Create AUTHENTICATED chain for clients that have completed registration
-iptables -t nat -N AUTHENTICATED
 iptables -t nat -A CAPTIVE_PORTAL -j AUTHENTICATED
 iptables -t nat -A AUTHENTICATED -j RETURN
 
