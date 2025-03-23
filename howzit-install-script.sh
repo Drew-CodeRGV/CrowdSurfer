@@ -303,7 +303,7 @@ fi
 
 # Install Node.js dependencies
 cd "$INSTALL_DIR"
-npm install --production
+npm install --production --no-fund --no-audit
 check "Install Node.js dependencies" "critical"
 
 section "Creating Network Configuration Files"
@@ -730,10 +730,8 @@ cat > /etc/systemd/system/hostapd.service.d/override.conf << EOF
 LimitNOFILE=65536
 EOF
 
-# Create a suitable app.js file optimized for performance
-section "Creating Application Files"
-
 # Create core application file
+section "Creating Application Files"
 cat > "$INSTALL_DIR/app.js" << 'EOF'
 /**
  * Howzit Captive Portal
@@ -756,4 +754,995 @@ const winston = require('winston');
 
 // Set up logger
 const logger = winston.createLogger({
-  level: config.system?.logLevel || 
+  level: config.system?.logLevel || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
+  ),
+  transports: [
+    new winston.transports.File({ filename: './logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: './logs/howzit.log' })
+  ]
+});
+
+if (process.env.NODE_ENV !== 'production
+/**
+ * Howzit Captive Portal
+ * Main application file
+ */
+
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const passport = require('passport');
+const path = require('path');
+const fs = require('fs-extra');
+const morgan = require('morgan');
+const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
+const cluster = require('cluster');
+const numCPUs = require('os').cpus().length;
+const config = require('./config/default.json');
+const winston = require('winston');
+
+// Set up logger
+const logger = winston.createLogger({
+  level: config.system?.logLevel || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
+  ),
+  transports: [
+    new winston.transports.File({ filename: './logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: './logs/howzit.log' })
+  ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: winston.format.simple()
+  }));
+}
+
+// Create basic Express app
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Set view engine
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+// Basic middleware
+app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(cookieParser());
+
+// Session configuration
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.db',
+    dir: './data'
+  }),
+  secret: config.sessionSecret || 'howzit-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', 
+    maxAge: 24 * 60 * 60 * 1000 
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Create basic data directories
+fs.ensureDirSync(path.join(__dirname, 'data/csv'));
+fs.ensureDirSync(path.join(__dirname, 'data/backups'));
+
+// Simplified captive portal middleware
+app.use((req, res, next) => {
+  // Skip for certain paths
+  const skipPaths = ['/admin', '/api', '/css', '/js', '/images', '/login', '/register', '/verify', '/success'];
+  for (const path of skipPaths) {
+    if (req.path.startsWith(path)) {
+      return next();
+    }
+  }
+  
+  // Handle special captive portal detection endpoints
+  const captiveEndpoints = [
+    '/generate_204',         // Android
+    '/mobile/status.php',    // misc
+    '/ncsi.txt',             // Windows
+    '/hotspot-detect.html',  // iOS/MacOS
+    '/library/test/success.html', // iOS/MacOS
+    '/connectivity-check',   // Firefox
+    '/fwlink/'               // Microsoft
+  ];
+  
+  if (captiveEndpoints.some(endpoint => req.path.includes(endpoint))) {
+    return res.redirect('/');
+  }
+  
+  // Regular web requests (not targeting the splash page)
+  if (req.path !== '/' && req.method === 'GET' && 
+      req.headers.accept && req.headers.accept.includes('text/html')) {
+    return res.redirect('/');
+  }
+  
+  next();
+});
+
+// Sample routes (will be replaced later with proper implementation)
+app.get('/', (req, res) => {
+  res.render('splash', {
+    title: 'Sign in to win!',
+    eventName: config.captivePortal.eventName
+  });
+});
+
+app.get('/register', (req, res) => {
+  res.render('register', {
+    title: 'Register',
+    eventName: config.captivePortal.eventName
+  });
+});
+
+app.post('/register', (req, res) => {
+  // In the full implementation, this would store the data
+  // For now, just redirect to success
+  res.redirect('/success');
+});
+
+app.get('/success', (req, res) => {
+  res.render('success', {
+    title: 'Thank You!',
+    eventName: config.captivePortal.eventName,
+    redirectUrl: config.captivePortal.redirectUrl,
+    countdown: config.captivePortal.redirectDelay
+  });
+});
+
+// Admin routes
+app.get('/admin', (req, res) => {
+  // Basic admin authentication
+  const username = req.query.username || '';
+  const password = req.query.password || '';
+  
+  if (username === config.system.adminUsername && password === config.system.adminPassword) {
+    res.render('admin', {
+      title: 'Admin Dashboard',
+      boxName: config.system.boxName,
+      config: config
+    });
+  } else {
+    res.render('login', {
+      title: 'Admin Login',
+      error: req.query.error ? 'Invalid credentials' : null
+    });
+  }
+});
+
+// Special captive portal endpoints
+app.get('/generate_204', (req, res) => res.redirect('/'));
+app.get('/hotspot-detect.html', (req, res) => res.redirect('/'));
+app.get('/library/test/success.html', (req, res) => res.redirect('/'));
+app.get('/ncsi.txt', (req, res) => res.redirect('/'));
+app.get('/connecttest.txt', (req, res) => res.redirect('/'));
+app.get('/fwlink', (req, res) => res.redirect('/'));
+
+// Start the server
+app.listen(port, () => {
+  logger.info(`Howzit captive portal running on http://localhost:${port}`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  logger.info('Shutting down gracefully...');
+  process.exit(0);
+});
+EOF
+
+# Create basic splash page template
+mkdir -p "$INSTALL_DIR/views"
+cat > "$INSTALL_DIR/views/splash.ejs" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> | <%= eventName %></title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 500px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            flex: 1;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo {
+            max-width: 200px;
+            margin-bottom: 15px;
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin: 0 0 10px;
+        }
+        .social-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .social-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+        .social-button:hover {
+            opacity: 0.9;
+        }
+        .google {
+            background-color: #DB4437;
+        }
+        .facebook {
+            background-color: #4267B2;
+        }
+        .twitter {
+            background-color: #1DA1F2;
+        }
+        .apple {
+            background-color: #000;
+        }
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+            color: #666;
+        }
+        .divider::before, .divider::after {
+            content: "";
+            flex: 1;
+            border-bottom: 1px solid #ddd;
+        }
+        .divider span {
+            padding: 0 10px;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .terms {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        .terms a {
+            color: #3498db;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="/images/logo.png" alt="<%= eventName %>" class="logo">
+            <h1><%= title %></h1>
+            <p>Connect to our WiFi and enter for a chance to win!</p>
+        </div>
+
+        <div class="social-buttons">
+            <a href="/auth/google" class="social-button google">Sign in with Google</a>
+            <a href="/auth/facebook" class="social-button facebook">Sign in with Facebook</a>
+            <!-- <a href="/auth/twitter" class="social-button twitter">Sign in with Twitter</a> -->
+            <!-- <a href="/auth/apple" class="social-button apple">Sign in with Apple</a> -->
+        </div>
+
+        <div class="divider"><span>or</span></div>
+
+        <a href="/register" class="btn">Register with Email</a>
+
+        <div class="terms">
+            By connecting, you agree to our <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Powered by CrowdSurfer</p>
+    </div>
+</body>
+</html>
+EOF
+
+# Create register page template
+cat > "$INSTALL_DIR/views/register.ejs" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> | <%= eventName %></title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 500px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            flex: 1;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo {
+            max-width: 200px;
+            margin-bottom: 15px;
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin: 0 0 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .required {
+            color: red;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+            color: #3498db;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="/images/logo.png" alt="<%= eventName %>" class="logo">
+            <h1>Register to Win</h1>
+            <p>Please fill out the form below to enter.</p>
+        </div>
+
+        <form action="/register" method="post">
+            <div class="form-group">
+                <label for="firstName">First Name <span class="required">*</span></label>
+                <input type="text" id="firstName" name="firstName" required>
+            </div>
+
+            <div class="form-group">
+                <label for="lastName">Last Name <span class="required">*</span></label>
+                <input type="text" id="lastName" name="lastName" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address <span class="required">*</span></label>
+                <input type="email" id="email" name="email" required>
+            </div>
+
+            <div class="form-group">
+                <label for="zipCode">ZIP Code <span class="required">*</span></label>
+                <input type="text" id="zipCode" name="zipCode" required>
+            </div>
+
+            <div class="form-group">
+                <label for="gender">Gender</label>
+                <select id="gender" name="gender">
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="birthday">Birthday <span class="required">*</span></label>
+                <input type="date" id="birthday" name="birthday" required>
+            </div>
+
+            <button type="submit" class="btn">Submit</button>
+        </form>
+
+        <a href="/" class="back-link">← Back to login options</a>
+    </div>
+
+    <div class="footer">
+        <p>Powered by CrowdSurfer</p>
+    </div>
+</body>
+</html>
+EOF
+
+# Create success page template
+cat > "$INSTALL_DIR/views/success.ejs" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> | <%= eventName %></title>
+    <meta http-equiv="refresh" content="<%= countdown %>;url=<%= redirectUrl %>">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 500px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            flex: 1;
+            text-align: center;
+        }
+        .success-icon {
+            font-size: 80px;
+            color: #2ecc71;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin: 0 0 20px;
+        }
+        .message {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .countdown {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .countdown p {
+            margin: 0;
+            color: #666;
+        }
+        .progress-bar {
+            height: 10px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #3498db;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 1s linear;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon">✓</div>
+        <h1>Thank You!</h1>
+        <div class="message">
+            <p>You have been successfully entered to win!</p>
+            <p>You can now enjoy free WiFi access.</p>
+        </div>
+
+        <div class="countdown">
+            <p>You will be redirected in <span id="countdown"><%= countdown %></span> seconds...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Powered by CrowdSurfer</p>
+    </div>
+
+    <script>
+        // Countdown and progress bar
+        const countdown = <%= countdown %>;
+        let secondsLeft = countdown;
+        const countdownElement = document.getElementById('countdown');
+        const progressElement = document.getElementById('progress');
+        
+        // Set initial progress
+        progressElement.style.width = '0%';
+        
+        // Update every second
+        const interval = setInterval(() => {
+            secondsLeft--;
+            countdownElement.textContent = secondsLeft;
+            
+            // Update progress bar
+            const progress = 100 - ((secondsLeft / countdown) * 100);
+            progressElement.style.width = progress + '%';
+            
+            if (secondsLeft <= 0) {
+                clearInterval(interval);
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+EOF
+
+# Create admin login page template
+cat > "$INSTALL_DIR/views/login.ejs" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .login-container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 350px;
+        }
+        h1 {
+            margin-top: 0;
+            text-align: center;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .error {
+            color: #e74c3c;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>Admin Login</h1>
+        
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+        
+        <form action="/admin" method="get">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="btn">Login</button>
+        </form>
+    </div>
+</body>
+</html>
+EOF
+
+# Create basic admin dashboard template
+cat > "$INSTALL_DIR/views/admin.ejs" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - <%= boxName %></title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            color: #333;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .stat-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin-top: 0;
+            color: #666;
+            font-size: 16px;
+        }
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #3498db;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Howzit Admin Dashboard - <%= boxName %></h1>
+        <div>
+            <a href="/" class="btn" target="_blank">View Captive Portal</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats-container">
+            <div class="stat-card">
+                <h3>Registrations</h3>
+                <div class="stat-value">0</div>
+                <small>Total entries</small>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Active Connections</h3>
+                <div class="stat-value">0</div>
+                <small>Current users</small>
+            </div>
+            
+            <div class="stat-card">
+                <h3>WiFi SSID</h3>
+                <div class="stat-value" style="font-size: 24px;"><%= config.network.ssid %></div>
+                <small><%= config.network.password ? 'Password Protected' : 'Open Network' %></small>
+            </div>
+            
+            <div class="stat-card">
+                <h3>System Status</h3>
+                <div class="stat-value" style="color: #2ecc71;">Online</div>
+                <small>All services running</small>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Quick Actions</h2>
+            <button class="btn">Download CSV Data</button>
+            <button class="btn">Restart Services</button>
+            <button class="btn">Clear All Data</button>
+        </div>
+
+        <div class="card">
+            <h2>Recent Registrations</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date/Time</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="4">No registrations yet</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+
+# Create a demo logo
+mkdir -p "$INSTALL_DIR/public/images"
+cat > "$INSTALL_DIR/public/images/logo.png" << 'EOF'
+iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF+mlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDggNzkuMTY0MDM2LCAyMDE5LzA4LzEzLTAxOjA2OjU3ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjItMDQtMTJUMTU6MjQ6MTcrMDI6MDA
+section "Running Network Configuration"
+"$INSTALL_DIR/scripts/setup-network.sh"
+check "Configure network" "critical"
+
+# Enable and start services
+section "Starting Services"
+systemctl daemon-reload
+systemctl enable hostapd dnsmasq
+systemctl start hostapd
+check "Start hostapd service"
+systemctl start dnsmasq
+check "Start dnsmasq service"
+
+systemctl enable howzit.service
+systemctl start howzit.service
+check "Start Howzit service"
+
+# Configure Nginx as reverse proxy
+section "Setting Up Nginx Reverse Proxy"
+cat > /etc/nginx/sites-available/howzit << EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    
+    server_name _;
+    
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/howzit /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+systemctl restart nginx
+check "Configure and start Nginx"
+
+section "Optimizing System Performance"
+# Increase file limits
+cat > /etc/security/limits.d/howzit.conf << EOF
+*               soft    nofile          65535
+*               hard    nofile          65535
+EOF
+
+# Optimize kernel parameters
+cat > /etc/sysctl.d/99-howzit-performance.conf << EOF
+# Increase maximum open files
+fs.file-max = 500000
+
+# Increase TCP connection settings
+net.core.somaxconn = 65535
+net.core.netdev_max_backlog = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+
+# Increase TCP buffer sizes
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+
+# Optimize TCP connection timeouts
+net.ipv4.tcp_fin_timeout = 10
+net.ipv4.tcp_keepalive_time = 300
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_keepalive_intvl = 15
+net.ipv4.tcp_tw_reuse = 1
+EOF
+
+sysctl -p /etc/sysctl.d/99-howzit-performance.conf
+check "Optimize system performance"
+
+# Create cron job for daily log rotation
+cat > /etc/cron.daily/howzit-logs << EOF
+#!/bin/bash
+find /var/log/howzit -type f -name "*.log" -mtime +7 -delete
+find $INSTALL_DIR/logs -type f -name "*.log" -mtime +7 -delete
+EOF
+chmod +x /etc/cron.daily/howzit-logs
+
+# Installation complete
+section "Installation Complete"
+echo -e "${GREEN}Howzit captive portal has been successfully installed and configured!${NC}"
+echo
+echo -e "WiFi SSID: ${YELLOW}$WIFI_SSID${NC}"
+
+if [ -n "$WIFI_PASSWORD" ]; then
+    echo -e "WiFi Password: ${YELLOW}$WIFI_PASSWORD${NC}"
+else
+    echo -e "WiFi configured as an ${YELLOW}open network${NC} (no password)"
+fi
+
+echo
+echo -e "Admin URL: ${YELLOW}http://10.0.0.1/admin${NC}"
+echo -e "Admin Username: ${YELLOW}$ADMIN_USERNAME${NC}"
+echo -e "Admin Password: ${YELLOW}$ADMIN_PASSWORD${NC}"
+echo
+echo -e "Event Name: ${YELLOW}$EVENT_NAME${NC}"
+echo
+echo -e "${BLUE}To customize social login, visit the admin dashboard.${NC}"
+echo -e "${BLUE}Your WiFi network should now be broadcasting.${NC}"
+echo
+
+log "Installation completed successfully"
