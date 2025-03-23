@@ -806,7 +806,7 @@ iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
 
 # Configure the CAPTIVE_PORTAL chain to redirect to the portal server
-iptables -t nat -A CAPTIVE_PORTAL -j DNAT --to-destination ${AP_IP}:3000
+iptables -t nat -A CAPTIVE_PORTAL -p tcp -j DNAT --to-destination ${AP_IP}:3000
 
 # Add the AUTHENTICATED chain - authenticated devices will bypass the captive portal
 iptables -t nat -A CAPTIVE_PORTAL -j AUTHENTICATED
