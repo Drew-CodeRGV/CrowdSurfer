@@ -1,201 +1,150 @@
 #!/bin/bash
 
-#====================================================
-# Howzit Captive Portal Complete Installation Script
+###############################################################
+# Howzit Captive Portal Installation Script for Raspberry Pi
 # 
-# This script performs a complete installation and setup of the
-# Howzit captive portal on a fresh Raspberry Pi, optimized for efficiency.
+# This script installs and configures the Howzit captive portal
+# system on a fresh Raspberry Pi installation.
 #
-# Usage: bash install-howzit.sh [options]
-#
-# Options:
-#   --ssid NAME        Set WiFi SSID (default: CrowdSurfer-[random])
-#   --password PASS    Set WiFi password (default: open network)
-#   --admin-pass PASS  Set admin password (default: howzit)
-#   --event NAME       Set event name (default: none)
-#   --silent           Non-interactive installation
-#   --help             Show this help
-#====================================================
+# Usage: sudo bash install-howzit.sh
+###############################################################
 
-# Ensure the script is run as root
+# Ensure script is run as root
 if [ "$(id -u)" -ne 0 ]; then
   echo "This script must be run as root" >&2
-  echo "Please run: sudo bash $0 $@" >&2
+  echo "Please run: sudo bash $0" >&2
   exit 1
 fi
 
-# Text colors
+# Text formatting
+BOLD='\033[1m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default values
+# Constants
 INSTALL_DIR="/opt/crowdsurfer/howzit"
 LOG_DIR="/var/log/howzit"
-WIFI_SSID="CrowdSurfer-$(cat /proc/sys/kernel/random/uuid | cut -c -8)"
-WIFI_PASSWORD=""
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="howzit"
-EVENT_NAME="CrowdSurfer Event"
-CAPTIVE_IP="10.0.0.1"
-ETHERNET_INTERFACE="eth0"
+CONFIG_DIR="/etc/howzit"
 WIFI_INTERFACE="wlan0"
-SILENT=false
-INTERACTIVE=true
+ETHERNET_INTERFACE="eth0"
+DEFAULT_SSID="CrowdSurfer-WiFi"
+DEFAULT_ADMIN_USER="admin"
+DEFAULT_ADMIN_PASSWORD="howzit"
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --ssid)
-      WIFI_SSID="$2"
-      shift 2
-      ;;
-    --password)
-      WIFI_PASSWORD="$2"
-      shift 2
-      ;;
-    --admin-pass)
-      ADMIN_PASSWORD="$2"
-      shift 2
-      ;;
-    --event)
-      EVENT_NAME="$2"
-      shift 2
-      ;;
-    --silent)
-      SILENT=true
-      INTERACTIVE=false
-      shift
-      ;;
-    --help)
-      echo "Usage: bash $0 [options]"
-      echo ""
-      echo "Options:"
-      echo "  --ssid NAME        Set WiFi SSID (default: CrowdSurfer-[random])"
-      echo "  --password PASS    Set WiFi password (default: open network)"
-      echo "  --admin-pass PASS  Set admin password (default: howzit)"
-      echo "  --event NAME       Set event name (default: none)"
-      echo "  --silent           Non-interactive installation"
-      echo "  --help             Show this help"
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $1"
-      echo "Use --help for usage information"
-      exit 1
-      ;;
-  esac
-done
-
-# Create log directory
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/install.log"
-
-# Log function
-log() {
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+# Function to print section headers
+print_section() {
+  echo -e "\n${BLUE}${BOLD}$1${NC}"
+  echo -e "${BLUE}--------------------------------------------------${NC}"
 }
 
-# Print section header
-section() {
-  echo -e "\n${BLUE}=== $1 ===${NC}"
-  log "=== $1 ==="
-}
-
-# Check command success
-check() {
-  if [ $? -eq 0 ]; then
-    echo -e "  ${GREEN}✓ $1${NC}"
-    log "✓ $1"
+# Function to print status
+print_status() {
+  if [ $1 -eq 0 ]; then
+    echo -e "[ ${GREEN}OK${NC} ] $2"
   else
-    echo -e "  ${RED}✗ $1${NC}"
-    log "✗ $1"
-    if [ "$2" = "critical" ]; then
-      echo -e "${RED}Critical error: Installation cannot continue${NC}"
-      log "Critical error: Installation cannot continue"
+    echo -e "[${RED}FAIL${NC}] $2"
+    if [ "$3" == "critical" ]; then
+      echo -e "${RED}Critical error: Installation cannot continue.${NC}"
       exit 1
     fi
   fi
 }
 
+# Function to create log message
+log_message() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_DIR/install.log"
+  echo "$1"
+}
+
+# Create log directory
+mkdir -p "$LOG_DIR"
+touch "$LOG_DIR/install.log"
+
 # Display banner
-echo -e "${BLUE}=======================================${NC}"
-echo -e "${BLUE}     Howzit Captive Portal Setup      ${NC}"
-echo -e "${BLUE}=======================================${NC}"
-echo -e "${YELLOW}This script will install and configure the complete${NC}"
-echo -e "${YELLOW}Howzit captive portal system on this Raspberry Pi.${NC}"
-echo -e ""
-log "Starting Howzit installation"
+clear
+echo -e "${BLUE}${BOLD}"
+echo "   _    _                     _ _   "
+echo "  | |  | |                   (_) |  "
+echo "  | |__| | _____      ____ _  _| |_ "
+echo "  |  __  |/ _ \ \ /\ / / _\` || | __|"
+echo "  | |  | | (_) \ V  V / (_| || | |_ "
+echo "  |_|  |_|\___/ \_/\_/ \__,_|/ |\__|"
+echo "                           _/ /     "
+echo "                          |__/      "
+echo -e "${NC}"
+echo -e "${BOLD}Captive Portal Installation Script${NC}"
+echo -e "This script will install and configure the Howzit captive portal on your Raspberry Pi.\n"
 
-# Interactive configuration if not in silent mode
-if [ "$INTERACTIVE" = true ]; then
-  echo -e "${YELLOW}WiFi Configuration${NC}"
-  read -p "Enter WiFi SSID [$WIFI_SSID]: " input
-  WIFI_SSID=${input:-$WIFI_SSID}
-  
-  read -p "Enter WiFi password (leave empty for open network): " input
-  WIFI_PASSWORD=${input:-$WIFI_PASSWORD}
-  
-  echo -e "\n${YELLOW}Admin Configuration${NC}"
-  read -p "Enter admin username [$ADMIN_USERNAME]: " input
-  ADMIN_USERNAME=${input:-$ADMIN_USERNAME}
-  
-  read -s -p "Enter admin password [$ADMIN_PASSWORD]: " input
-  echo
-  ADMIN_PASSWORD=${input:-$ADMIN_PASSWORD}
-  
-  echo -e "\n${YELLOW}Event Configuration${NC}"
-  read -p "Enter event name [$EVENT_NAME]: " input
-  EVENT_NAME=${input:-$EVENT_NAME}
-  
-  echo
-fi
+# Prompt for user input
+read -p "WiFi SSID [${DEFAULT_SSID}]: " WIFI_SSID
+WIFI_SSID=${WIFI_SSID:-$DEFAULT_SSID}
 
-# Setup starts here
-section "System Update"
-apt update -y
-check "Update package lists"
+read -p "Set WiFi password (leave empty for open network): " WIFI_PASSWORD
 
-# Install only essential packages and optimize installation time
-section "Installing Dependencies"
-apt install -y --no-install-recommends hostapd dnsmasq iptables iw git nodejs npm nginx sqlite3
-check "Install essential packages" "critical"
+read -p "Admin username [${DEFAULT_ADMIN_USER}]: " ADMIN_USER
+ADMIN_USER=${ADMIN_USER:-$DEFAULT_ADMIN_USER}
 
-# Install additional utilities in background for parallel installation
-apt install -y curl python3-minimal build-essential ca-certificates &
-BACKGROUND_INSTALL_PID=$!
+read -s -p "Admin password [${DEFAULT_ADMIN_PASSWORD}]: " ADMIN_PASSWORD
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-$DEFAULT_ADMIN_PASSWORD}
+echo ""
 
-section "Creating Directories"
-mkdir -p "$INSTALL_DIR"/{config,public,src,data,scripts,logs,views}
-mkdir -p "$INSTALL_DIR"/public/{css,js,images}
-mkdir -p "$INSTALL_DIR"/data/{csv,backups}
-check "Create directory structure"
-
-# Clone repository if available, otherwise set up from scratch
-section "Setting Up Howzit"
-if [ -d "/tmp/howzit" ]; then
-  rm -rf "/tmp/howzit"
-fi
-
-# Check if GitHub repository exists
-if curl --output /dev/null --silent --head --fail "https://github.com/drewlentz/CrowdSurfer"; then
-  log "Cloning from GitHub repository"
-  git clone https://github.com/drewlentz/CrowdSurfer.git /tmp/crowdsurfer
-  if [ -d "/tmp/crowdsurfer/howzit-raspi" ]; then
-    cp -r /tmp/crowdsurfer/howzit-raspi/* "$INSTALL_DIR/"
-    check "Copy files from GitHub repository"
-  else
-    log "Repository structure not as expected, creating files manually"
-    # Files will be created below
-  fi
+# Confirm installation
+echo -e "\n${YELLOW}${BOLD}Installation Summary:${NC}"
+echo -e "  - WiFi SSID: ${WIFI_SSID}"
+if [ -n "$WIFI_PASSWORD" ]; then
+  echo -e "  - WiFi: Password protected"
 else
-  log "GitHub repository not available, creating files manually"
+  echo -e "  - WiFi: Open network (no password)"
 fi
+echo -e "  - Admin username: ${ADMIN_USER}"
+echo -e "  - Installation directory: ${INSTALL_DIR}"
+
+read -p "Continue with installation? (y/n): " CONFIRM
+if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
+  echo "Installation cancelled by user."
+  exit 0
+fi
+
+# Start installation
+print_section "System Update"
+log_message "Starting system update..."
+
+apt update
+print_status $? "Update package lists"
+
+# Prioritize essential packages first
+apt install -y hostapd dnsmasq iptables
+print_status $? "Install networking packages" "critical"
+
+# Install additional packages
+print_section "Installing Dependencies"
+log_message "Installing system dependencies..."
+
+apt install -y --no-install-recommends nodejs npm nginx sqlite3 git curl build-essential ca-certificates iw
+print_status $? "Install system dependencies" "critical"
+
+# Check NodeJS version (we need at least v14)
+NODE_VERSION=$(node -v 2>/dev/null | cut -d 'v' -f 2 | cut -d '.' -f 1)
+if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 14 ]; then
+  log_message "NodeJS version is too old or not installed. Installing Node.js 16..."
+  curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+  apt install -y nodejs
+  print_status $? "Install Node.js 16" "critical"
+fi
+
+print_section "Creating Directories"
+mkdir -p "$INSTALL_DIR"/{config,data,logs,public/{css,js,images},src,views,scripts}
+mkdir -p "$CONFIG_DIR"
+print_status $? "Create directory structure"
+
+# Create main application files
+print_section "Creating Application Files"
 
 # Create package.json
-cat > "$INSTALL_DIR/package.json" << EOF
+cat > "$INSTALL_DIR/package.json" << EOL
 {
   "name": "howzit-captive-portal",
   "version": "1.0.0",
@@ -206,534 +155,29 @@ cat > "$INSTALL_DIR/package.json" << EOF
     "dev": "nodemon app.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "body-parser": "^1.19.0",
-    "cookie-parser": "^1.4.5",
-    "ejs": "^3.1.6",
     "express": "^4.17.1",
     "express-session": "^1.17.2",
-    "connect-sqlite3": "^0.9.13",
-    "morgan": "^1.10.0",
+    "body-parser": "^1.19.0",
+    "ejs": "^3.1.6",
     "sqlite3": "^5.0.2",
-    "passport": "^0.5.0",
-    "passport-facebook": "^3.0.0",
-    "passport-google-oauth20": "^2.0.0",
-    "passport-local": "^1.0.0",
-    "googleapis": "^92.0.0",
-    "fs-extra": "^10.0.0",
-    "moment": "^2.29.1",
     "winston": "^3.3.3",
-    "cron": "^1.8.2"
+    "moment": "^2.29.1",
+    "fs-extra": "^10.0.0",
+    "morgan": "^1.10.0",
+    "connect-sqlite3": "^0.9.13",
+    "cookie-parser": "^1.4.5",
+    "uuid": "^8.3.2",
+    "helmet": "^4.6.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.15"
   }
 }
-EOF
-
-# Create default configuration
-cat > "$INSTALL_DIR/config/default.json" << EOF
-{
-  "system": {
-    "boxName": "$(hostname)",
-    "adminUsername": "$ADMIN_USERNAME",
-    "adminPassword": "$ADMIN_PASSWORD",
-    "logLevel": "info"
-  },
-  "network": {
-    "ssid": "$WIFI_SSID",
-    "password": "$WIFI_PASSWORD",
-    "apInterface": "$WIFI_INTERFACE",
-    "internetInterface": "$ETHERNET_INTERFACE",
-    "apIp": "$CAPTIVE_IP"
-  },
-  "captivePortal": {
-    "title": "Sign in to win!",
-    "eventName": "$EVENT_NAME",
-    "primaryColor": "#3498db",
-    "secondaryColor": "#2c3e50",
-    "logoUrl": "/images/logo.png",
-    "redirectUrl": "https://www.google.com",
-    "redirectDelay": 10
-  },
-  "auth": {
-    "google": {
-      "enabled": true,
-      "clientId": "",
-      "clientSecret": ""
-    },
-    "facebook": {
-      "enabled": true,
-      "clientId": "",
-      "clientSecret": ""
-    },
-    "twitter": {
-      "enabled": false,
-      "clientId": "",
-      "clientSecret": ""
-    },
-    "apple": {
-      "enabled": false,
-      "clientId": "",
-      "clientSecret": ""
-    }
-  },
-  "googleSheets": {
-    "enabled": true,
-    "credentialsFile": "$INSTALL_DIR/config/google-credentials.json",
-    "sheetNameTemplate": "${EVENT_NAME}_%DATE%_%RANDOM%"
-  },
-  "email": {
-    "enabled": false,
-    "service": "gmail",
-    "user": "",
-    "password": "",
-    "adminEmail": ""
-  },
-  "sessionSecret": "$(cat /proc/sys/kernel/random/uuid)"
-}
-EOF
-
-section "Installing Node.js Dependencies"
-# Check if background installation is complete
-if ps -p $BACKGROUND_INSTALL_PID > /dev/null; then
-  log "Waiting for background installation to complete..."
-  wait $BACKGROUND_INSTALL_PID
-fi
-
-# Install Node.js dependencies
-cd "$INSTALL_DIR"
-npm install --omit=dev --no-fund --no-audit
-check "Install Node.js dependencies" "critical"
-
-section "Creating Network Configuration Files"
-
-# Create network configuration script
-cat > "$INSTALL_DIR/scripts/setup-network.sh" << 'EOF'
-#!/bin/bash
-
-# Network Configuration Script for Howzit Captive Portal
-# This script sets up the network configuration for the captive portal
-
-# Source utility functions
-SCRIPT_DIR="$(dirname "$0")"
-if [ -f "$SCRIPT_DIR/utils.sh" ]; then
-  source "$SCRIPT_DIR/utils.sh"
-fi
-
-# Configuration
-ETHERNET_INTERFACE="eth0"
-WIFI_INTERFACE="wlan0"
-CAPTIVE_IP="10.0.0.1"
-SUBNET_MASK="255.255.0.0"
-CONFIG_FILE="$(dirname "$SCRIPT_DIR")/config/default.json"
-
-# Load configuration from JSON file if it exists
-if [ -f "$CONFIG_FILE" ]; then
-  WIFI_SSID=$(grep -oP '"ssid": *"\K[^"]*' "$CONFIG_FILE")
-  WIFI_PASSWORD=$(grep -oP '"password": *"\K[^"]*' "$CONFIG_FILE")
-  ETHERNET_INTERFACE=$(grep -oP '"internetInterface": *"\K[^"]*' "$CONFIG_FILE")
-  WIFI_INTERFACE=$(grep -oP '"apInterface": *"\K[^"]*' "$CONFIG_FILE")
-  CAPTIVE_IP=$(grep -oP '"apIp": *"\K[^"]*' "$CONFIG_FILE")
-fi
-
-# Ensure script is run as root
-if [ "$(id -u)" -ne 0 ]; then
-  echo "This script must be run as root" >&2
-  exit 1
-fi
-
-echo "Setting up network for Howzit captive portal..."
-
-# 1. Detect network interfaces
-echo "Detecting network interfaces..."
-
-# Detect all network interfaces
-ALL_INTERFACES=$(ip -o link show | grep -v lo | awk -F': ' '{print $2}')
-
-# Identify USB interfaces (anything that's not eth0 or wlan0)
-USB_INTERFACES=""
-for interface in $ALL_INTERFACES; do
-  if [[ "$interface" != "$WIFI_INTERFACE" && "$interface" != "$ETHERNET_INTERFACE" && "$interface" != "lo" ]]; then
-    echo "Detected USB interface: $interface"
-    USB_INTERFACES="$USB_INTERFACES $interface"
-  fi
-done
-
-# 2. Enable IP forwarding
-echo "Enabling IP forwarding..."
-echo 1 > /proc/sys/net/ipv4/ip_forward
-echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/90-ip-forward.conf
-sysctl -p /etc/sysctl.d/90-ip-forward.conf
-
-# 3. Configure iptables
-echo "Configuring iptables rules..."
-
-# Clear existing rules
-iptables -F
-iptables -t nat -F
-iptables -t mangle -F
-
-# Set default policies
-iptables -P INPUT ACCEPT
-iptables -P FORWARD ACCEPT
-iptables -P OUTPUT ACCEPT
-
-# Allow established and related connections
-iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-# Allow traffic on loopback interface
-iptables -A INPUT -i lo -j ACCEPT
-
-# Allow traffic to the captive portal web server
-iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
-
-# Allow DNS and DHCP
-iptables -A INPUT -p udp --dport 53 -j ACCEPT
-iptables -A INPUT -p tcp --dport 53 -j ACCEPT
-iptables -A INPUT -p udp --dport 67 -j ACCEPT
-iptables -A INPUT -p udp --dport 68 -j ACCEPT
-
-# Set up NAT for Ethernet (for internet connectivity)
-echo "Setting up NAT for internet connectivity..."
-iptables -t nat -A POSTROUTING -o $ETHERNET_INTERFACE -j MASQUERADE
-
-# Create a chain for authenticated clients
-echo "Creating authentication chain..."
-iptables -t mangle -N AUTHENTICATED
-iptables -t mangle -A AUTHENTICATED -j MARK --set-mark 1
-iptables -t mangle -A PREROUTING -j AUTHENTICATED
-
-# Set up captive portal redirection for WiFi interface
-echo "Setting up captive portal for WiFi interface ($WIFI_INTERFACE)..."
-iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --dport 80 -m mark ! --mark 1 -j DNAT --to-destination $CAPTIVE_IP:3000
-iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --dport 443 -m mark ! --mark 1 -j DNAT --to-destination $CAPTIVE_IP:3000
-
-# Set up captive portal redirection for USB interfaces
-for usb_if in $USB_INTERFACES; do
-  if ip link show $usb_if &>/dev/null; then
-    echo "Setting up captive portal for USB interface ($usb_if)..."
-    iptables -t nat -A PREROUTING -i $usb_if -p tcp --dport 80 -m mark ! --mark 1 -j DNAT --to-destination $CAPTIVE_IP:3000
-    iptables -t nat -A PREROUTING -i $usb_if -p tcp --dport 443 -m mark ! --mark 1 -j DNAT --to-destination $CAPTIVE_IP:3000
-  fi
-done
-
-# Save iptables rules
-echo "Saving iptables rules..."
-mkdir -p /etc/iptables
-iptables-save > /etc/iptables/rules.v4
-
-# 4. Configure dnsmasq for captive portal
-echo "Configuring dnsmasq..."
-
-# Build interface list for dnsmasq
-INTERFACE_LIST="$WIFI_INTERFACE"
-for usb_if in $USB_INTERFACES; do
-  if ip link show $usb_if &>/dev/null; then
-    INTERFACE_LIST="$INTERFACE_LIST,$usb_if"
-  fi
-done
-
-# Create dnsmasq configuration
-cat > /etc/dnsmasq.conf << EOL
-# Interface configuration
-interface=$INTERFACE_LIST
-# Explicitly exclude Ethernet
-except-interface=$ETHERNET_INTERFACE
-bind-interfaces
-
-# DNS configuration
-no-resolv
-server=8.8.8.8
-server=8.8.4.4
-domain-needed
-bogus-priv
-
-# DHCP configuration - 24 subnets x 200 addresses = 4,800 IP addresses
-dhcp-range=10.0.0.2,10.0.0.200,255.255.255.0,30m
-dhcp-range=10.0.1.1,10.0.1.200,255.255.255.0,30m
-dhcp-range=10.0.2.1,10.0.2.200,255.255.255.0,30m
-dhcp-range=10.0.3.1,10.0.3.200,255.255.255.0,30m
-dhcp-range=10.0.4.1,10.0.4.200,255.255.255.0,30m
-dhcp-range=10.0.5.1,10.0.5.200,255.255.255.0,30m
-dhcp-range=10.0.6.1,10.0.6.200,255.255.255.0,30m
-dhcp-range=10.0.7.1,10.0.7.200,255.255.255.0,30m
-dhcp-range=10.0.8.1,10.0.8.200,255.255.255.0,30m
-dhcp-range=10.0.9.1,10.0.9.200,255.255.255.0,30m
-dhcp-range=10.0.10.1,10.0.10.200,255.255.255.0,30m
-dhcp-range=10.0.11.1,10.0.11.200,255.255.255.0,30m
-dhcp-range=10.0.12.1,10.0.12.200,255.255.255.0,30m
-dhcp-range=10.0.13.1,10.0.13.200,255.255.255.0,30m
-dhcp-range=10.0.14.1,10.0.14.200,255.255.255.0,30m
-dhcp-range=10.0.15.1,10.0.15.200,255.255.255.0,30m
-dhcp-range=10.0.16.1,10.0.16.200,255.255.255.0,30m
-dhcp-range=10.0.17.1,10.0.17.200,255.255.255.0,30m
-dhcp-range=10.0.18.1,10.0.18.200,255.255.255.0,30m
-dhcp-range=10.0.19.1,10.0.19.200,255.255.255.0,30m
-dhcp-range=10.0.20.1,10.0.20.200,255.255.255.0,30m
-dhcp-range=10.0.21.1,10.0.21.200,255.255.255.0,30m
-dhcp-range=10.0.22.1,10.0.22.200,255.255.255.0,30m
-dhcp-range=10.0.23.1,10.0.23.200,255.255.255.0,30m
-
-# Set gateway and DNS server
-dhcp-option=3,$CAPTIVE_IP
-dhcp-option=6,$CAPTIVE_IP
-
-# Redirect all DNS requests to our captive portal
-address=/#/$CAPTIVE_IP
-
-# Optimize performance
-cache-size=10000
-log-facility=/var/log/dnsmasq.log
 EOL
+print_status $? "Create package.json"
 
-# 5. Configure hostapd for WiFi access point
-echo "Configuring hostapd..."
-
-# Create hostapd configuration
-cat > /etc/hostapd/hostapd.conf << EOL
-# Interface configuration
-interface=$WIFI_INTERFACE
-driver=nl80211
-
-# Basic settings
-ssid=$WIFI_SSID
-country_code=US
-hw_mode=g
-channel=7
-
-# 802.11n settings
-ieee80211n=1
-wmm_enabled=1
-ht_capab=[HT40+][SHORT-GI-40][DSSS_CCK-40]
-
-# Authentication settings
-auth_algs=1
-macaddr_acl=0
-ignore_broadcast_ssid=0
-EOL
-
-# Add password configuration if provided
-if [ -n "$WIFI_PASSWORD" ]; then
-  if [ ${#WIFI_PASSWORD} -lt 8 ]; then
-    echo "WARNING: Password is less than 8 characters, this may not work with some clients"
-  fi
-  
-  cat >> /etc/hostapd/hostapd.conf << EOL
-# WPA/WPA2 configuration
-wpa=2
-wpa_passphrase=$WIFI_PASSWORD
-wpa_key_mgmt=WPA-PSK
-wpa_pairwise=TKIP
-rsn_pairwise=CCMP
-EOL
-  echo "WiFi configured with password protection"
-else
-  echo "WiFi configured as an open network (no password)"
-fi
-
-# Configure hostapd to use this config file
-sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
-
-# 6. Configure network interfaces
-echo "Configuring network interfaces..."
-
-# Configure WiFi interface
-cat > /etc/network/interfaces.d/wlan0 << EOL
-# WiFi interface - Captive portal
-allow-hotplug $WIFI_INTERFACE
-iface $WIFI_INTERFACE inet static
-    address $CAPTIVE_IP
-    netmask $SUBNET_MASK
-    post-up iptables-restore < /etc/iptables/rules.v4
-EOL
-
-# Configure Ethernet interface
-cat > /etc/network/interfaces.d/eth0 << EOL
-# Ethernet interface - Direct internet
-allow-hotplug $ETHERNET_INTERFACE
-iface $ETHERNET_INTERFACE inet dhcp
-EOL
-
-# Create helper scripts for managing authenticated clients
-echo "Creating helper scripts..."
-
-# Script to allow a client to bypass the captive portal
-cat > "$INSTALL_DIR/scripts/allow-client.sh" << 'EOL'
-#!/bin/bash
-# This script adds a client to the authenticated list
-
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <mac_address>"
-  exit 1
-fi
-
-MAC=$(echo "$1" | tr 'a-z' 'A-Z')
-echo "Allowing client $MAC to bypass captive portal"
-iptables -t mangle -A AUTHENTICATED -m mac --mac-source "$MAC" -j MARK --set-mark 1
-echo "Client $MAC added successfully"
-EOL
-chmod +x "$INSTALL_DIR/scripts/allow-client.sh"
-
-# Script to list authenticated clients
-cat > "$INSTALL_DIR/scripts/list-clients.sh" << 'EOL'
-#!/bin/bash
-# This script lists all authenticated clients
-
-echo "Authenticated clients:"
-iptables-save -t mangle | grep "\-A AUTHENTICATED" | grep -oP "MAC \K([0-9A-F:]{17})" || echo "None found"
-EOL
-chmod +x "$INSTALL_DIR/scripts/list-clients.sh"
-
-# Script to clear all authenticated clients
-cat > "$INSTALL_DIR/scripts/clear-clients.sh" << 'EOL'
-#!/bin/bash
-# This script clears all authenticated clients
-
-echo "Clearing all authenticated clients..."
-iptables -t mangle -F AUTHENTICATED
-iptables -t mangle -A AUTHENTICATED -j MARK --set-mark 1
-echo "All clients cleared"
-EOL
-chmod +x "$INSTALL_DIR/scripts/clear-clients.sh"
-
-# Create USB device detection script
-echo "Creating USB device detection script..."
-
-cat > "$INSTALL_DIR/scripts/detect-usb.sh" << 'EOL'
-#!/bin/bash
-# This script detects USB network interfaces and updates the captive portal configuration
-
-LOG_FILE="/var/log/howzit/network.log"
-CAPTIVE_IP="10.0.0.1"
-ETHERNET_INTERFACE="eth0"
-WIFI_INTERFACE="wlan0"
-
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Detecting USB network interfaces..." >> "$LOG_FILE"
-
-# Get all interfaces except lo, eth0 and wlan0
-USB_INTERFACES=$(ip -o link show | grep -v "lo\|$ETHERNET_INTERFACE\|$WIFI_INTERFACE" | awk -F': ' '{print $2}')
-
-if [ -z "$USB_INTERFACES" ]; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - No USB network interfaces detected" >> "$LOG_FILE"
-  exit 0
-fi
-
-# Update dnsmasq configuration
-INTERFACE_LIST="$WIFI_INTERFACE"
-for usb_if in $USB_INTERFACES; do
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - Found USB interface: $usb_if" >> "$LOG_FILE"
-  INTERFACE_LIST="$INTERFACE_LIST,$usb_if"
-  
-  # Add iptables rules for this interface
-  iptables -t nat -A PREROUTING -i $usb_if -p tcp --dport 80 -m mark ! --mark 1 -j DNAT --to-destination $CAPTIVE_IP:3000
-  iptables -t nat -A PREROUTING -i $usb_if -p tcp --dport 443 -m mark ! --mark 1 -j DNAT --to-destination $CAPTIVE_IP:3000
-done
-
-# Update dnsmasq config
-sed -i "s/^interface=.*/interface=$INTERFACE_LIST/" /etc/dnsmasq.conf
-
-# Restart dnsmasq
-systemctl restart dnsmasq
-
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Updated configuration for interfaces: $INTERFACE_LIST" >> "$LOG_FILE"
-EOL
-chmod +x "$INSTALL_DIR/scripts/detect-usb.sh"
-
-# Create udev rule for USB network interfaces
-echo "Creating udev rule for USB network interfaces..."
-
-cat > /etc/udev/rules.d/99-howzit-usb-net.rules << EOL
-ACTION=="add", SUBSYSTEM=="net", KERNEL!="lo|eth*|wlan*", RUN+="$INSTALL_DIR/scripts/detect-usb.sh"
-EOL
-
-echo "Network configuration completed successfully."
-echo "WiFi SSID: $WIFI_SSID"
-if [ -n "$WIFI_PASSWORD" ]; then
-  echo "WiFi Password: $WIFI_PASSWORD"
-else
-  echo "WiFi is configured as an open network (no password)"
-fi
-EOF
-chmod +x "$INSTALL_DIR/scripts/setup-network.sh"
-
-# Create utility script
-cat > "$INSTALL_DIR/scripts/utils.sh" << 'EOF'
-#!/bin/bash
-
-# Text colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Log function
-log() {
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "/var/log/howzit/network.log"
-}
-
-# Check command success
-check_command() {
-  if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ $1${NC}"
-    return 0
-  else
-    echo -e "${RED}✗ $1${NC}"
-    return 1
-  fi
-}
-EOF
-chmod +x "$INSTALL_DIR/scripts/utils.sh"
-
-section "Setting Up System Service"
-
-# Create systemd service file
-cat > /etc/systemd/system/howzit.service << EOF
-[Unit]
-Description=Howzit Captive Portal
-After=network.target dnsmasq.service hostapd.service
-Wants=network-online.target
-Requires=dnsmasq.service hostapd.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/node $INSTALL_DIR/app.js
-WorkingDirectory=$INSTALL_DIR
-User=root
-Group=root
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-Environment="NODE_ENV=production"
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Create service override for dnsmasq
-mkdir -p /etc/systemd/system/dnsmasq.service.d/
-cat > /etc/systemd/system/dnsmasq.service.d/override.conf << EOF
-[Service]
-LimitNOFILE=65536
-EOF
-
-# Create service override for hostapd
-mkdir -p /etc/systemd/system/hostapd.service.d/
-cat > /etc/systemd/system/hostapd.service.d/override.conf << EOF
-[Service]
-LimitNOFILE=65536
-EOF
-
-# Create core application file
-section "Creating Application Files"
-cat > "$INSTALL_DIR/app.js" << 'EOF'
-
+# Create app.js
+cat > "$INSTALL_DIR/app.js" << 'EOL'
 /**
  * Howzit Captive Portal
  * Main application file
@@ -742,20 +186,21 @@ cat > "$INSTALL_DIR/app.js" << 'EOF'
 const express = require('express');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
-const passport = require('passport');
 const path = require('path');
 const fs = require('fs-extra');
 const morgan = require('morgan');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
-const cluster = require('cluster');
-const numCPUs = require('os').cpus().length;
-const config = require('./config/default.json');
 const winston = require('winston');
+const helmet = require('helmet');
+const { v4: uuidv4 } = require('uuid');
+
+// Load configuration
+const config = require('./config/config.json');
 
 // Set up logger
 const logger = winston.createLogger({
-  level: config.system?.logLevel || 'info',
+  level: config.logging?.level || 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
@@ -772,7 +217,7 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-// Create basic Express app
+// Create Express app
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -780,7 +225,8 @@ const port = process.env.PORT || 3000;
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Basic middleware
+// Middleware
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -802,18 +248,17 @@ app.use(session({
   }
 }));
 
-// Initialize Passport
-app.use(passport.initialize());
-app.use(passport.session());
+// Create data directory if it doesn't exist
+fs.ensureDirSync(path.join(__dirname, 'data'));
 
-// Create basic data directories
-fs.ensureDirSync(path.join(__dirname, 'data/csv'));
-fs.ensureDirSync(path.join(__dirname, 'data/backups'));
+// Simplified database module
+const db = require('./src/database');
+db.init();
 
 // Simplified captive portal middleware
 app.use((req, res, next) => {
-  // Skip for certain paths
-  const skipPaths = ['/admin', '/api', '/css', '/js', '/images', '/login', '/register', '/verify', '/success'];
+  // Skip for static assets and certain paths
+  const skipPaths = ['/admin', '/api', '/css', '/js', '/images', '/login', '/register', '/profile', '/success'];
   for (const path of skipPaths) {
     if (req.path.startsWith(path)) {
       return next();
@@ -835,7 +280,7 @@ app.use((req, res, next) => {
     return res.redirect('/');
   }
   
-  // Regular web requests (not targeting the splash page)
+  // Regular web requests not targeting the splash page
   if (req.path !== '/' && req.method === 'GET' && 
       req.headers.accept && req.headers.accept.includes('text/html')) {
     return res.redirect('/');
@@ -844,54 +289,127 @@ app.use((req, res, next) => {
   next();
 });
 
-// Sample routes (will be replaced later with proper implementation)
+// Basic routes
 app.get('/', (req, res) => {
   res.render('splash', {
-    title: 'Sign in to win!',
-    eventName: config.captivePortal.eventName
+    config: config.captivePortal
   });
 });
 
-app.get('/register', (req, res) => {
-  res.render('register', {
-    title: 'Register',
-    eventName: config.captivePortal.eventName
+app.get('/login', (req, res) => {
+  res.render('login', {
+    config: config.captivePortal,
+    error: null
   });
 });
 
-app.post('/register', (req, res) => {
-  // In the full implementation, this would store the data
-  // For now, just redirect to success
+app.post('/login', (req, res) => {
+  const { email } = req.body;
+  
+  if (!email) {
+    return res.render('login', { 
+      config: config.captivePortal, 
+      error: 'Email is required' 
+    });
+  }
+  
+  // Create a simple session
+  req.session.user = {
+    id: uuidv4(),
+    email: email,
+    loginTime: new Date()
+  };
+  
+  // Redirect to profile page
+  res.redirect('/profile');
+});
+
+app.get('/profile', (req, res) => {
+  if (!req.session.user) {
+    return res.redirect('/');
+  }
+  
+  res.render('profile', {
+    config: config.captivePortal,
+    user: req.session.user,
+    error: null
+  });
+});
+
+app.post('/profile', (req, res) => {
+  if (!req.session.user) {
+    return res.redirect('/');
+  }
+  
+  const { firstName, lastName, zipCode } = req.body;
+  
+  if (!firstName || !lastName) {
+    return res.render('profile', {
+      config: config.captivePortal,
+      user: req.session.user,
+      error: 'Please fill in required fields'
+    });
+  }
+  
+  // Update user data
+  req.session.user = {
+    ...req.session.user,
+    firstName,
+    lastName,
+    zipCode,
+    registrationComplete: true
+  };
+  
+  // Save user to database
+  db.saveUser(req.session.user);
+  
+  // Run the script to allow this device through the captive portal
+  const clientIP = req.ip.replace(/^::ffff:/, ''); // Remove IPv6 prefix if present
+  require('./src/allow-client')(clientIP);
+  
+  // Redirect to success page
   res.redirect('/success');
 });
 
 app.get('/success', (req, res) => {
+  if (!req.session.user || !req.session.user.registrationComplete) {
+    return res.redirect('/');
+  }
+  
   res.render('success', {
-    title: 'Thank You!',
-    eventName: config.captivePortal.eventName,
-    redirectUrl: config.captivePortal.redirectUrl,
-    countdown: config.captivePortal.redirectDelay
+    config: config.captivePortal,
+    user: req.session.user
   });
 });
 
-// Admin routes
+// Admin routes (simplified)
 app.get('/admin', (req, res) => {
-  // Basic admin authentication
-  const username = req.query.username || '';
-  const password = req.query.password || '';
+  res.render('admin-login');
+});
+
+app.post('/admin/login', (req, res) => {
+  const { username, password } = req.body;
   
-  if (username === config.system.adminUsername && password === config.system.adminPassword) {
-    res.render('admin', {
-      title: 'Admin Dashboard',
-      boxName: config.system.boxName,
-      config: config
-    });
+  if (username === config.admin.username && password === config.admin.password) {
+    req.session.admin = true;
+    res.redirect('/admin/dashboard');
   } else {
-    res.render('login', {
-      title: 'Admin Login',
-      error: req.query.error ? 'Invalid credentials' : null
-    });
+    res.render('admin-login', { error: 'Invalid credentials' });
   }
+});
+
+app.get('/admin/dashboard', (req, res) => {
+  if (!req.session.admin) {
+    return res.redirect('/admin');
+  }
+  
+  // Get user data from database
+  const users = db.getUsers();
+  
+  res.render('admin-dashboard', {
+    config: config,
+    users: users
+  });
 });
 
 // Special captive portal endpoints
@@ -905,724 +423,1251 @@ app.get('/fwlink', (req, res) => res.redirect('/'));
 // Start the server
 app.listen(port, () => {
   logger.info(`Howzit captive portal running on http://localhost:${port}`);
+  console.log(`Howzit captive portal running on http://localhost:${port}`);
 });
+EOL
+print_status $? "Create app.js"
 
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  logger.info('Shutting down gracefully...');
-  process.exit(0);
-});
+# Create database module
+mkdir -p "$INSTALL_DIR/src"
+cat > "$INSTALL_DIR/src/database.js" << 'EOL'
+/**
+ * Simple database module for Howzit
+ */
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const fs = require('fs');
+
+let db;
+
+function init() {
+  const dbDir = path.join(__dirname, '../data');
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  
+  db = new sqlite3.Database(path.join(dbDir, 'howzit.db'));
+  
+  // Create tables if they don't exist
+  db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT,
+      firstName TEXT,
+      lastName TEXT,
+      zipCode TEXT,
+      macAddress TEXT,
+      ipAddress TEXT,
+      loginTime TEXT,
+      registrationTime TEXT,
+      lastSeen TEXT
+    )`);
+  });
+  
+  return db;
+}
+
+function saveUser(user) {
+  if (!db) init();
+  
+  const now = new Date().toISOString();
+  
+  db.run(
+    `INSERT OR REPLACE INTO users 
+    (id, email, firstName, lastName, zipCode, ipAddress, loginTime, registrationTime, lastSeen) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      user.id,
+      user.email,
+      user.firstName,
+      user.lastName,
+      user.zipCode,
+      user.ipAddress,
+      user.loginTime ? new Date(user.loginTime).toISOString() : null,
+      now,
+      now
+    ]
+  );
+}
+
+function getUsers() {
+  if (!db) init();
+  
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM users ORDER BY registrationTime DESC', (err, rows) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(rows);
+    });
+  });
+}
+
+function getUserById(id) {
+  if (!db) init();
+  
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(row);
+    });
+  });
+}
+
+module.exports = {
+  init,
+  saveUser,
+  getUsers,
+  getUserById
+};
+EOL
+print_status $? "Create database module"
+
+# Create helper script to allow clients
+cat > "$INSTALL_DIR/src/allow-client.js" << 'EOL'
+/**
+ * Helper script to allow a client through the captive portal
+ */
+const { exec } = require('child_process');
+const path = require('path');
+
+module.exports = function allowClient(ip) {
+  // Get MAC address from IP
+  exec(`arp -n ${ip} | grep -v Address | awk '{print $3}'`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error getting MAC address: ${error}`);
+      return;
+    }
+    
+    const mac = stdout.trim();
+    if (!mac) {
+      console.error(`Could not find MAC address for IP: ${ip}`);
+      return;
+    }
+    
+    // Call the script to allow the client
+    const scriptPath = path.join(__dirname, '../scripts/allow-client.sh');
+    exec(`bash ${scriptPath} ${mac}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error allowing client: ${error}`);
+        return;
+      }
+      console.log(`Client allowed: ${ip} (${mac})`);
+    });
+  });
+};
+EOL
+print_status $? "Create allow-client module"
+
+# Create configuration file
+mkdir -p "$INSTALL_DIR/config"
+cat > "$INSTALL_DIR/config/config.json" << EOL
+{
+  "admin": {
+    "username": "${ADMIN_USER}",
+    "password": "${ADMIN_PASSWORD}"
+  },
+  "captivePortal": {
+    "title": "Connect to Free WiFi",
+    "subtitle": "Sign up to access the internet",
+    "eventName": "CrowdSurfer Event",
+    "redirectUrl": "https://www.google.com",
+    "redirectDelay": 10,
+    "logoPath": "/images/logo.png",
+    "primaryColor": "#3498db",
+    "secondaryColor": "#e74c3c",
+    "termsUrl": "/terms.html",
+    "privacyUrl": "/privacy.html"
+  },
+  "network": {
+    "ssid": "${WIFI_SSID}",
+    "password": "${WIFI_PASSWORD}",
+    "interface": "${WIFI_INTERFACE}"
+  },
+  "logging": {
+    "level": "info",
+    "console": true
+  },
+  "sessionSecret": "$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
+}
+EOL
+print_status $? "Create configuration file"
+
+# Create network configuration script
+mkdir -p "$INSTALL_DIR/scripts"
+cat > "$INSTALL_DIR/scripts/setup-network.sh" << EOL
+#!/bin/bash
+
+# Network configuration script for Howzit captive portal
+
+# Exit on error
+set -e
+
+# Configuration values
+WIFI_INTERFACE="${WIFI_INTERFACE}"
+ETHERNET_INTERFACE="${ETHERNET_INTERFACE}"
+WIFI_SSID="${WIFI_SSID}"
+WIFI_PASSWORD="${WIFI_PASSWORD}"
+AP_IP="10.0.0.1"
+
+# Configure hostapd for WiFi access point
+echo "Configuring hostapd for WiFi access point..."
+cat > /etc/hostapd/hostapd.conf << EOF
+interface=${WIFI_INTERFACE}
+driver=nl80211
+ssid=${WIFI_SSID}
+hw_mode=g
+channel=7
+wmm_enabled=0
+macaddr_acl=0
+auth_algs=1
+ignore_broadcast_ssid=0
+ieee80211n=1
 EOF
 
-# Create basic splash page template
+# Add password if provided
+if [ -n "${WIFI_PASSWORD}" ]; then
+    cat >> /etc/hostapd/hostapd.conf << EOF
+wpa=2
+wpa_passphrase=${WIFI_PASSWORD}
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+rsn_pairwise=CCMP
+EOF
+fi
+
+# Enable hostapd
+echo "DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"" >> /etc/default/hostapd
+
+# Configure dnsmasq for DHCP and DNS
+echo "Configuring dnsmasq..."
+cat > /etc/dnsmasq.conf << EOF
+interface=${WIFI_INTERFACE}
+dhcp-range=10.0.0.2,10.0.0.100,255.255.255.0,24h
+domain=wlan
+address=/#/10.0.0.1
+EOF
+
+# Configure network interfaces
+echo "Configuring network interfaces..."
+
+# Configure WiFi interface
+cat > /etc/network/interfaces.d/wlan0 << EOF
+allow-hotplug ${WIFI_INTERFACE}
+iface ${WIFI_INTERFACE} inet static
+    address 10.0.0.1
+    netmask 255.255.255.0
+    network 10.0.0.0
+    broadcast 10.0.0.255
+EOF
+
+# Configure ethernet interface (if available)
+cat > /etc/network/interfaces.d/eth0 << EOF
+allow-hotplug ${ETHERNET_INTERFACE}
+iface ${ETHERNET_INTERFACE} inet dhcp
+EOF
+
+# Configure IP forwarding and NAT
+echo "Configuring IP forwarding and NAT..."
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/90-ip-forward.conf
+sysctl -p /etc/sysctl.d/90-ip-forward.conf
+
+# Configure iptables
+iptables -t nat -A POSTROUTING -o ${ETHERNET_INTERFACE} -j MASQUERADE
+iptables -A FORWARD -i ${ETHERNET_INTERFACE} -o ${WIFI_INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i ${WIFI_INTERFACE} -o ${ETHERNET_INTERFACE} -j ACCEPT
+
+# Configure captive portal redirection
+iptables -t nat -N CAPTIVE_PORTAL
+iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL
+iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
+iptables -t nat -A CAPTIVE_PORTAL -j DNAT --to-destination ${AP_IP}:3000
+
+# Create AUTHENTICATED chain for clients that have completed registration
+iptables -t nat -N AUTHENTICATED
+iptables -t nat -A CAPTIVE_PORTAL -j AUTHENTICATED
+iptables -t nat -A AUTHENTICATED -j RETURN
+
+# Save iptables rules
+mkdir -p /etc/iptables
+iptables-save > /etc/iptables/rules.v4
+
+# Create script to restore iptables rules on boot
+cat > /etc/network/if-up.d/iptables << EOF
+#!/bin/sh
+iptables-restore < /etc/iptables/rules.v4
+exit 0
+EOF
+chmod +x /etc/network/if-up.d/iptables
+
+# Restart services
+echo "Restarting network services..."
+systemctl restart networking
+systemctl unmask hostapd
+systemctl enable hostapd
+systemctl restart hostapd
+systemctl restart dnsmasq
+
+echo "Network configuration completed."
+EOL
+chmod +x "$INSTALL_DIR/scripts/setup-network.sh"
+print_status $? "Create network setup script"
+
+# Create client authentication script
+cat > "$INSTALL_DIR/scripts/allow-client.sh" << 'EOL'
+#!/bin/bash
+
+# Script to allow a client to bypass the captive portal
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <mac_address>"
+  exit 1
+fi
+
+MAC=$(echo "$1" | tr 'a-z' 'A-Z')
+echo "Adding client $MAC to authenticated list..."
+
+# Add client to the AUTHENTICATED chain
+iptables -t nat -A AUTHENTICATED -m mac --mac-source "$MAC" -j RETURN
+
+# Save iptables rules
+iptables-save > /etc/iptables/rules.v4
+
+echo "Client $MAC has been authenticated."
+EOL
+chmod +x "$INSTALL_DIR/scripts/allow-client.sh"
+print_status $? "Create client authentication script"
+
+# Create service file
+cat > "/etc/systemd/system/howzit.service" << EOL
+[Unit]
+Description=Howzit Captive Portal
+After=network.target hostapd.service dnsmasq.service
+Wants=hostapd.service dnsmasq.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=/usr/bin/node ${INSTALL_DIR}/app.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=howzit
+
+[Install]
+WantedBy=multi-user.target
+EOL
+print_status $? "Create systemd service file"
+
+# Create view templates
+print_section "Creating View Templates"
+
+# Create splash page
 mkdir -p "$INSTALL_DIR/views"
-cat > "$INSTALL_DIR/views/splash.ejs" << 'EOF'
+cat > "$INSTALL_DIR/views/splash.ejs" << 'EOL'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> | <%= eventName %></title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 500px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            flex: 1;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .logo {
-            max-width: 200px;
-            margin-bottom: 15px;
-        }
-        h1 {
-            color: #333;
-            font-size: 24px;
-            margin: 0 0 10px;
-        }
-        .social-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin: 20px 0;
-        }
-        .social-button {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 12px;
-            border-radius: 4px;
-            color: white;
-            font-weight: bold;
-            text-decoration: none;
-            transition: opacity 0.2s;
-        }
-        .social-button:hover {
-            opacity: 0.9;
-        }
-        .google {
-            background-color: #DB4437;
-        }
-        .facebook {
-            background-color: #4267B2;
-        }
-        .twitter {
-            background-color: #1DA1F2;
-        }
-        .apple {
-            background-color: #000;
-        }
-        .divider {
-            display: flex;
-            align-items: center;
-            margin: 20px 0;
-            color: #666;
-        }
-        .divider::before, .divider::after {
-            content: "";
-            flex: 1;
-            border-bottom: 1px solid #ddd;
-        }
-        .divider span {
-            padding: 0 10px;
-        }
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-        }
-        .btn:hover {
-            background-color: #2980b9;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 12px;
-            color: #666;
-        }
-        .terms {
-            margin-top: 15px;
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-        }
-        .terms a {
-            color: #3498db;
-            text-decoration: none;
-        }
-    </style>
+    <title><%= config.title %></title>
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <img src="/images/logo.png" alt="<%= eventName %>" class="logo">
-            <h1><%= title %></h1>
-            <p>Connect to our WiFi and enter for a chance to win!</p>
+        <div class="card">
+            <div class="header">
+                <img src="<%= config.logoPath %>" alt="Logo" class="logo">
+                <h1><%= config.title %></h1>
+                <p><%= config.subtitle %></p>
+            </div>
+            
+            <div class="content">
+                <p>Welcome to <strong><%= config.eventName %></strong></p>
+                <p>Connect to our free WiFi by signing in below.</p>
+                
+                <div class="buttons">
+                    <a href="/login" class="button primary">Continue with Email</a>
+                </div>
+                
+                <p class="terms">
+                    By connecting, you agree to our <a href="<%= config.termsUrl %>">Terms</a> and <a href="<%= config.privacyUrl %>">Privacy Policy</a>
+                </p>
+            </div>
         </div>
-
-        <div class="social-buttons">
-            <a href="/auth/google" class="social-button google">Sign in with Google</a>
-            <a href="/auth/facebook" class="social-button facebook">Sign in with Facebook</a>
-            <!-- <a href="/auth/twitter" class="social-button twitter">Sign in with Twitter</a> -->
-            <!-- <a href="/auth/apple" class="social-button apple">Sign in with Apple</a> -->
+        
+        <div class="footer">
+            Powered by <strong>CrowdSurfer</strong>
         </div>
-
-        <div class="divider"><span>or</span></div>
-
-        <a href="/register" class="btn">Register with Email</a>
-
-        <div class="terms">
-            By connecting, you agree to our <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>
-        </div>
-    </div>
-
-    <div class="footer">
-        <p>Powered by CrowdSurfer</p>
     </div>
 </body>
 </html>
-EOF
+EOL
+print_status $? "Create splash page template"
 
-# Create register page template
-cat > "$INSTALL_DIR/views/register.ejs" << 'EOF'
+# Create login page
+cat > "$INSTALL_DIR/views/login.ejs" << 'EOL'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> | <%= eventName %></title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 500px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            flex: 1;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .logo {
-            max-width: 200px;
-            margin-bottom: 15px;
-        }
-        h1 {
-            color: #333;
-            font-size: 24px;
-            margin: 0 0 10px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 20px;
-        }
-        .btn:hover {
-            background-color: #2980b9;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 12px;
-            color: #666;
-        }
-        .required {
-            color: red;
-        }
-        .back-link {
-            display: block;
-            text-align: center;
-            margin-top: 15px;
-            color: #3498db;
-            text-decoration: none;
-        }
-    </style>
+    <title>Login - <%= config.title %></title>
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <img src="/images/logo.png" alt="<%= eventName %>" class="logo">
-            <h1>Register to Win</h1>
-            <p>Please fill out the form below to enter.</p>
+        <div class="card">
+            <div class="header">
+                <img src="<%= config.logoPath %>" alt="Logo" class="logo">
+                <h1>Sign In</h1>
+                <p>Enter your email to continue</p>
+            </div>
+            
+            <div class="content">
+                <% if (error) { %>
+                    <div class="error-message"><%= error %></div>
+                <% } %>
+                
+                <form action="/login" method="post">
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" required>
+                    </div>
+                    
+                    <button type="submit" class="button primary">Continue</button>
+                </form>
+                
+                <div class="back-link">
+                    <a href="/">&larr; Back</a>
+                </div>
+            </div>
         </div>
-
-        <form action="/register" method="post">
-            <div class="form-group">
-                <label for="firstName">First Name <span class="required">*</span></label>
-                <input type="text" id="firstName" name="firstName" required>
-            </div>
-
-            <div class="form-group">
-                <label for="lastName">Last Name <span class="required">*</span></label>
-                <input type="text" id="lastName" name="lastName" required>
-            </div>
-
-            <div class="form-group">
-                <label for="email">Email Address <span class="required">*</span></label>
-                <input type="email" id="email" name="email" required>
-            </div>
-
-            <div class="form-group">
-                <label for="zipCode">ZIP Code <span class="required">*</span></label>
-                <input type="text" id="zipCode" name="zipCode" required>
-            </div>
-
-            <div class="form-group">
-                <label for="gender">Gender</label>
-                <select id="gender" name="gender">
-                    <option value="">Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="birthday">Birthday <span class="required">*</span></label>
-                <input type="date" id="birthday" name="birthday" required>
-            </div>
-
-            <button type="submit" class="btn">Submit</button>
-        </form>
-
-        <a href="/" class="back-link">← Back to login options</a>
-    </div>
-
-    <div class="footer">
-        <p>Powered by CrowdSurfer</p>
+        
+        <div class="footer">
+            Powered by <strong>CrowdSurfer</strong>
+        </div>
     </div>
 </body>
 </html>
-EOF
+EOL
+print_status $? "Create login page template"
 
-# Create success page template
-cat > "$INSTALL_DIR/views/success.ejs" << 'EOF'
+# Create profile page
+cat > "$INSTALL_DIR/views/profile.ejs" << 'EOL'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> | <%= eventName %></title>
-    <meta http-equiv="refresh" content="<%= countdown %>;url=<%= redirectUrl %>">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 500px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            flex: 1;
-            text-align: center;
-        }
-        .success-icon {
-            font-size: 80px;
-            color: #2ecc71;
-            margin-bottom: 20px;
-        }
-        h1 {
-            color: #333;
-            font-size: 28px;
-            margin: 0 0 20px;
-        }
-        .message {
-            font-size: 18px;
-            color: #666;
-            margin-bottom: 30px;
-        }
-        .countdown {
-            margin-top: 30px;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-        }
-        .countdown p {
-            margin: 0;
-            color: #666;
-        }
-        .progress-bar {
-            height: 10px;
-            background-color: #e0e0e0;
-            border-radius: 5px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            background-color: #3498db;
-            border-radius: 5px;
-            width: 0%;
-            transition: width 1s linear;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 12px;
-            color: #666;
-        }
-    </style>
+    <title>Complete Profile - <%= config.title %></title>
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <div class="container">
-        <div class="success-icon">✓</div>
-        <h1>Thank You!</h1>
-        <div class="message">
-            <p>You have been successfully entered to win!</p>
-            <p>You can now enjoy free WiFi access.</p>
-        </div>
-
-        <div class="countdown">
-            <p>You will be redirected in <span id="countdown"><%= countdown %></span> seconds...</p>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progress"></div>
+        <div class="card">
+            <div class="header">
+                <img src="<%= config.logoPath %>" alt="Logo" class="logo">
+                <h1>Complete Your Profile</h1>
+                <p>Just a few more details and you'll be connected!</p>
+            </div>
+            
+            <div class="content">
+                <% if (error) { %>
+                    <div class="error-message"><%= error %></div>
+                <% } %>
+                
+                <form action="/profile" method="post">
+                    <div class="form-group">
+                        <label for="firstName">First Name <span class="required">*</span></label>
+                        <input type="text" id="firstName" name="firstName" required value="<%= user.firstName || '' %>">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="lastName">Last Name <span class="required">*</span></label>
+                        <input type="text" id="lastName" name="lastName" required value="<%= user.lastName || '' %>">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="zipCode">Zip Code</label>
+                        <input type="text" id="zipCode" name="zipCode" value="<%= user.zipCode || '' %>">
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="termsAgreed" name="termsAgreed" required>
+                        <label for="termsAgreed">I agree to the <a href="<%= config.termsUrl %>">Terms of Service</a> and <a href="<%= config.privacyUrl %>">Privacy Policy</a> <span class="required">*</span></label>
+                    </div>
+                    
+                    <button type="submit" class="button primary">Connect to WiFi</button>
+                </form>
             </div>
         </div>
+        
+        <div class="footer">
+            Powered by <strong>CrowdSurfer</strong>
+        </div>
     </div>
+</body>
+</html>
+EOL
+print_status $? "Create profile page template"
 
-    <div class="footer">
-        <p>Powered by CrowdSurfer</p>
+# Create success page
+cat > "$INSTALL_DIR/views/success.ejs" << 'EOL'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected - <%= config.title %></title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <meta http-equiv="refresh" content="<%= config.redirectDelay %>; url=<%= config.redirectUrl %>">
+</head>
+<body>
+    <div class="container">
+        <div class="card success-card">
+            <div class="success-icon">✓</div>
+            
+            <h1>You're Connected!</h1>
+            
+            <div class="success-message">
+                <p>Thanks, <%= user.firstName %>!</p>
+                <p>You are now connected to the WiFi network.</p>
+                
+                <div class="redirect-message">
+                    <p>You will be redirected in <span id="countdown"><%= config.redirectDelay %></span> seconds...</p>
+                    
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            Powered by <strong>CrowdSurfer</strong>
+        </div>
     </div>
-
+    
     <script>
-        // Countdown and progress bar
-        const countdown = <%= countdown %>;
-        let secondsLeft = countdown;
+        // Countdown timer
+        let seconds = <%= config.redirectDelay %>;
         const countdownElement = document.getElementById('countdown');
-        const progressElement = document.getElementById('progress');
+        const progressFill = document.getElementById('progress-fill');
         
-        // Set initial progress
-        progressElement.style.width = '0%';
-        
-        // Update every second
         const interval = setInterval(() => {
-            secondsLeft--;
-            countdownElement.textContent = secondsLeft;
-            
-            // Update progress bar
-            const progress = 100 - ((secondsLeft / countdown) * 100);
-            progressElement.style.width = progress + '%';
-            
-            if (secondsLeft <= 0) {
+            seconds--;
+            if (seconds <= 0) {
                 clearInterval(interval);
+            } else {
+                countdownElement.textContent = seconds;
+                const progressWidth = (seconds / <%= config.redirectDelay %>) * 100;
+                progressFill.style.width = (100 - progressWidth) + '%';
             }
         }, 1000);
     </script>
 </body>
 </html>
-EOF
+EOL
+print_status $? "Create success page template"
 
-# Create admin login page template
-cat > "$INSTALL_DIR/views/login.ejs" << 'EOF'
+# Create admin login page
+cat > "$INSTALL_DIR/views/admin-login.ejs" << 'EOL'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .login-container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            width: 350px;
-        }
-        h1 {
-            margin-top: 0;
-            text-align: center;
-            color: #333;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .btn:hover {
-            background-color: #2980b9;
-        }
-        .error {
-            color: #e74c3c;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-    </style>
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <div class="login-container">
-        <h1>Admin Login</h1>
-        
-        <% if (error) { %>
-            <div class="error"><%= error %></div>
-        <% } %>
-        
-        <form action="/admin" method="get">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>Admin Login</h1>
+                <p>Enter your credentials to access the admin dashboard</p>
             </div>
             
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+            <div class="content">
+                <% if (typeof error !== 'undefined' && error) { %>
+                    <div class="error-message"><%= error %></div>
+                <% } %>
+                
+                <form action="/admin/login" method="post">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    
+                    <button type="submit" class="button primary">Login</button>
+                </form>
+                
+                <div class="back-link">
+                    <a href="/">&larr; Back to Captive Portal</a>
+                </div>
             </div>
-            
-            <button type="submit" class="btn">Login</button>
-        </form>
+        </div>
     </div>
 </body>
 </html>
-EOF
+EOL
+print_status $? "Create admin login page template"
 
-# Create basic admin dashboard template
-cat > "$INSTALL_DIR/views/admin.ejs" << 'EOF'
+# Create admin dashboard page
+cat > "$INSTALL_DIR/views/admin-dashboard.ejs" << 'EOL'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> - <%= boxName %></title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
-        }
-        .header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 0 20px;
-        }
-        .card {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .card h2 {
-            margin-top: 0;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-            color: #333;
-        }
-        .stats-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-        }
-        .stat-card {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            text-align: center;
-        }
-        .stat-card h3 {
-            margin-top: 0;
-            color: #666;
-            font-size: 16px;
-        }
-        .stat-value {
-            font-size: 36px;
-            font-weight: bold;
-            margin: 10px 0;
-            color: #3498db;
-        }
-        .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 14px;
-        }
-        .btn:hover {
-            background-color: #2980b9;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-        }
-        tr:hover {
-            background-color: #f5f5f5;
-        }
-    </style>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/css/admin.css">
 </head>
 <body>
-    <div class="header">
-        <h1>Howzit Admin Dashboard - <%= boxName %></h1>
-        <div>
-            <a href="/" class="btn" target="_blank">View Captive Portal</a>
-        </div>
-    </div>
-
-    <div class="container">
-        <div class="stats-container">
-            <div class="stat-card">
-                <h3>Registrations</h3>
-                <div class="stat-value">0</div>
-                <small>Total entries</small>
+    <div class="admin-container">
+        <header class="admin-header">
+            <h1>Howzit Admin Dashboard</h1>
+            <div class="admin-actions">
+                <a href="/" class="button secondary" target="_blank">View Portal</a>
+                <a href="/admin/logout" class="button danger">Logout</a>
+            </div>
+        </header>
+        
+        <div class="admin-content">
+            <div class="stats-panel">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <div class="stat-value"><%= users.length %></div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>WiFi SSID</h3>
+                    <div class="stat-value"><%= config.network.ssid %></div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Network Status</h3>
+                    <div class="stat-value">Online</div>
+                </div>
             </div>
             
-            <div class="stat-card">
-                <h3>Active Connections</h3>
-                <div class="stat-value">0</div>
-                <small>Current users</small>
+            <div class="admin-panel">
+                <h2>Registered Users</h2>
+                
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Zip Code</th>
+                            <th>Registration Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% if (users.length === 0) { %>
+                            <tr>
+                                <td colspan="5" class="no-data">No registered users yet</td>
+                            </tr>
+                        <% } else { %>
+                            <% users.forEach(user => { %>
+                                <tr>
+                                    <td><%= user.firstName %> <%= user.lastName %></td>
+                                    <td><%= user.email %></td>
+                                    <td><%= user.zipCode || 'N/A' %></td>
+                                    <td><%= new Date(user.registrationTime).toLocaleString() %></td>
+                                    <td>
+                                        <a href="/admin/users/<%= user.id %>" class="button small">View</a>
+                                    </td>
+                                </tr>
+                            <% }) %>
+                        <% } %>
+                    </tbody>
+                </table>
             </div>
             
-            <div class="stat-card">
-                <h3>WiFi SSID</h3>
-                <div class="stat-value" style="font-size: 24px;"><%= config.network.ssid %></div>
-                <small><%= config.network.password ? 'Password Protected' : 'Open Network' %></small>
+            <div class="admin-panel">
+                <h2>Export Data</h2>
+                <p>Download user registration data in CSV format.</p>
+                <a href="/admin/export/csv" class="button primary">Export to CSV</a>
             </div>
-            
-            <div class="stat-card">
-                <h3>System Status</h3>
-                <div class="stat-value" style="color: #2ecc71;">Online</div>
-                <small>All services running</small>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Quick Actions</h2>
-            <button class="btn">Download CSV Data</button>
-            <button class="btn">Restart Services</button>
-            <button class="btn">Clear All Data</button>
-        </div>
-
-        <div class="card">
-            <h2>Recent Registrations</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date/Time</th>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Source</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colspan="4">No registrations yet</td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
     </div>
 </body>
 </html>
-EOF
+EOL
+print_status $? "Create admin dashboard template"
 
-# Create a demo logo
+# Create CSS files
+mkdir -p "$INSTALL_DIR/public/css"
+cat > "$INSTALL_DIR/public/css/styles.css" << 'EOL'
+/* Main CSS for Howzit Captive Portal */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f5f7fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.container {
+    width: 90%;
+    max-width: 500px;
+    margin: 20px auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 80vh;
+}
+
+.card {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+    margin-bottom: 20px;
+    flex: 1;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.logo {
+    max-width: 150px;
+    margin-bottom: 20px;
+}
+
+h1 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 24px;
+}
+
+.content {
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.button {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #3498db;
+    color: white;
+    text-decoration: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.2s;
+    text-align: center;
+}
+
+.button.primary {
+    background-color: #3498db;
+    width: 100%;
+}
+
+.button.primary:hover {
+    background-color: #2980b9;
+}
+
+.button.secondary {
+    background-color: #95a5a6;
+}
+
+.button.danger {
+    background-color: #e74c3c;
+}
+
+.buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.terms {
+    font-size: 12px;
+    text-align: center;
+    margin-top: 20px;
+    color: #7f8c8d;
+}
+
+.terms a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.footer {
+    text-align: center;
+    color: #7f8c8d;
+    padding: 10px;
+    font-size: 14px;
+}
+
+.error-message {
+    color: #e74c3c;
+    background-color: #fadbd8;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.back-link {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.back-link a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.checkbox-group {
+    margin-bottom: 20px;
+}
+
+.checkbox-group label {
+    display: inline;
+    margin-left: 8px;
+}
+
+.required {
+    color: #e74c3c;
+}
+
+/* Success page styles */
+.success-card {
+    text-align: center;
+}
+
+.success-icon {
+    font-size: 60px;
+    color: #2ecc71;
+    margin-bottom: 20px;
+}
+
+.success-message {
+    margin: 20px 0;
+}
+
+.redirect-message {
+    margin-top: 30px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.progress-bar {
+    height: 10px;
+    background-color: #ecf0f1;
+    border-radius: 5px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #3498db;
+    width: 0%;
+    transition: width 1s linear;
+}
+
+@media (max-width: 768px) {
+    .container {
+        width: 95%;
+    }
+    
+    .card {
+        padding: 20px;
+    }
+}
+EOL
+print_status $? "Create main CSS file"
+
+# Create admin CSS file
+cat > "$INSTALL_DIR/public/css/admin.css" << 'EOL'
+/* Admin Dashboard CSS */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f5f7fa;
+}
+
+.admin-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 0;
+    border-bottom: 1px solid #e5e5e5;
+    margin-bottom: 30px;
+}
+
+.admin-header h1 {
+    color: #2c3e50;
+    font-size: 24px;
+}
+
+.admin-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.button {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #3498db;
+    color: white;
+    text-decoration: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.button.primary {
+    background-color: #3498db;
+}
+
+.button.secondary {
+    background-color: #95a5a6;
+}
+
+.button.danger {
+    background-color: #e74c3c;
+}
+
+.button.small {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.stats-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    text-align: center;
+}
+
+.stat-card h3 {
+    color: #7f8c8d;
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+.stat-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.admin-panel {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.admin-panel h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 20px;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 10px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th, 
+.data-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.data-table th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+
+.data-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+.no-data {
+    text-align: center;
+    color: #7f8c8d;
+    padding: 20px;
+}
+
+@media (max-width: 768px) {
+    .admin-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .stats-panel {
+        grid-template-columns: 1fr;
+    }
+    
+    .data-table {
+        display: block;
+        overflow-x: auto;
+    }
+}
+EOL
+print_status $? "Create admin CSS file"
+
+# Create a simple logo
 mkdir -p "$INSTALL_DIR/public/images"
-cat > "$INSTALL_DIR/public/images/logo.png" << 'EOF'
-iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF+mlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDggNzkuMTY0MDM2LCAyMDE5LzA4LzEzLTAxOjA2OjU3ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjItMDQtMTJUMTU6MjQ6MTcrMDI6MDA
-section "Running Network Configuration"
-"$INSTALL_DIR/scripts/setup-network.sh"
-check "Configure network" "critical"
+# Simple placeholder logo - this is base64 encoded small image
+echo "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAABmJLR0QA/wD/AP+gvaeTAAAFEklEQVR4nO2dW2gdRRjHf23UmkRTRaFWsP0hikJVUCu1XkCrIj4JXkAFkRRvKD74oKiIWFAULz4ooiKiVq1K0Ye2JfXWVrSYNlFrvaA1GkuTSJM0bZr8fZiJbJbdc/bM7O45M+f8YEjOzuzMfv+zO9/Mzn4HFEVRFEVRFEVRFEVRlMLSAEwHZgHNWRcmZ0wCrgZmA7MzyHkIeBtoBT4C9mWgITUagc3AQeAv4DTwLfAI0JhhufLAdOA54FfMb3EY2AXcCxRSKMtHwAk8tWRdjoy5nPJGqGxfA5dlJcg3yNrgdWVVgIxoBL5AfqPnDVABuIV4UpaJLJAyG4jfIKVRGLX4G/A7sCcrITlgBvASMJB1QapxJfCnp+CvgcuzEpMTGoEPkf8mxzC9tFwxSj4Bbge+EcqeBG7HdCnVQzYB1yjlLQTeF+Qpeg9NvIPkBeDRiPXrhWrgWSS/yXbgmqTFvEO14HXAyoj1641G4HnCf5PjwF1JiZkKHPcIuQ94HRgbZ6V1wBhgLXAA+W+0BXNLi8VlwF5J4CZgahwV1TFTge3If6vXgItdyN8sKTQI3OGiEsXDHOB3wr/dL8BVUYo+HCiwB5gXpQKlKnOBvwn/ho/4LvRSIFAXMM9nsaVCHxgabQnCvuUj5uJ+e4X/QbTPR511mB6p/Ju+GCbYrAqB8/CfHSnxWEj1b3u/JNBST2CJtO6sC+CB1prEWoLsqCbc/FDg3L9AW4iAkQiF1YCxNYltk8SaESLgiEDY1Dp5qSlwS5AdiYSdCQlc5FhUHmgNnOvKuiBVEGlKJGxvSODekMAsECczgIeAN2wOOh2lUKPNQT2ScDshgbV68lbDdOCbOAr+QRJ7U0jgKyGBLmkA7sMM4u3DPBNpA14C7owp1ybXBdwoib1OENijA2+nMdPSvgN6Kz4/BWwDHsdMPXRBqyshtdRDKplO+b2P4Mc/wDLH5bzTZeFeBhpeC5x/MGR9O06LbFjhqkCvIx+wryH8lrXYUZmbXRXodcTTxohhbm11VOa1rgq0gupTsL2PcQ+7KrNk+LjDW6A/JeETMRNlBsN2Vcd3Cq6aITRDJKGTgN8C5zZUBJU8Xpf4btTZ+D6TY1bG3HovbpDO/JZ0p2SuRX5PWxkQ7KJcAD8DJwlvkPUxlWctsjIvxj8pZizZTeJZgfya7GCaI4ZHZQxd9WGnzHSRrQrS15DQtQn9wFLJ9pGIPaGLjhA7XT0JPYM8gWYxsEtBfjXagYUS//FCQJz7UN2CHGt5HEFwMfAzYXq+oTwH+U9HWpoQj5HmLMbsWhhF5RRHBZkzKeBxKuvXOYW8RH5myjrlcwnnmOG9ZCPA8k7wY0LdngfuRz5bskg9pJT7EL4T2kpKMkJYhpwbsRfxXNIiT9aJwg6EM1N3pqrIJe0I9dlJ+q+SjcJ0xEk1A8DslHW5pBk5Uc3elHX5sAI5L2IbyWdgJsU4zIvN3rqsA+5JVZVjZiGnY16dqiqXyDkRfeTg35FKWYqcG/FBqopc8h5yfcoeJhTxRcw45CcuR8j/QGGQCcjvS45QpCfKS5DfR16UrioP20J+3Cz/mj+AySJfyfFEyUCnzZMY/2XkkhQzImaE6BgEllN+m6JQTELOkAP4CTMGKxQ3UX4ULnkOkM7/3HTGVOSHiX4uAveigg7M+62LgDcoUu9JURRFURRFURRFURRFUZScch57hBH+M0c1CAAAAABJRU5ErkJggg==" | base64 -d > "$INSTALL_DIR/public/images/logo.png"
+print_status $? "Create placeholder logo"
 
-# Enable and start services
-section "Starting Services"
-systemctl daemon-reload
-systemctl enable hostapd dnsmasq
-systemctl start hostapd
-check "Start hostapd service"
-systemctl start dnsmasq
-check "Start dnsmasq service"
+# Create terms and privacy pages
+cat > "$INSTALL_DIR/public/terms.html" << 'EOL'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Service</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        h2 {
+            color: #3498db;
+            margin-top: 30px;
+        }
+        a {
+            color: #3498db;
+        }
+        .back-button {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Terms of Service</h1>
+    
+    <p>Last Updated: <%= new Date().toLocaleDateString() %></p>
+    
+    <p>Welcome to our WiFi service. By accessing or using our wireless network, you agree to be bound by these Terms of Service.</p>
+    
+    <h2>1. Acceptance of Terms</h2>
+    <p>By using our WiFi service, you agree to these terms. If you do not agree, please do not use the service.</p>
+    
+    <h2>2. Service Description</h2>
+    <p>We provide wireless internet access as a courtesy to our visitors. We do not guarantee availability or speed of the service.</p>
+    
+    <h2>3. User Conduct</h2>
+    <p>When using our WiFi service, you agree not to:</p>
+    <ul>
+        <li>Violate any applicable laws or regulations</li>
+        <li>Infringe on intellectual property rights</li>
+        <li>Transmit harmful code or malware</li>
+        <li>Engage in spamming or other abusive behaviors</li>
+        <li>Access unauthorized areas of the network</li>
+        <li>Use excessive bandwidth that may negatively impact other users</li>
+    </ul>
+    
+    <h2>4. Data Collection</h2>
+    <p>By using our WiFi service, you acknowledge that we may collect certain information as outlined in our Privacy Policy.</p>
+    
+    <h2>5. Limitation of Liability</h2>
+    <p>We provide this service "as is" without warranties of any kind. We are not liable for any damages arising from your use of the service.</p>
+    
+    <h2>6. Termination</h2>
+    <p>We reserve the right to terminate your access to the WiFi service at any time, for any reason, without notice.</p>
+    
+    <h2>7. Changes to Terms</h2>
+    <p>We may modify these terms at any time. Continued use of the service constitutes acceptance of the modified terms.</p>
+    
+    <a href="/" class="back-button">Back to Login</a>
+</body>
+</html>
+EOL
+print_status $? "Create terms page"
 
-systemctl enable howzit.service
-systemctl start howzit.service
-check "Start Howzit service"
+cat > "$INSTALL_DIR/public/privacy.html" << 'EOL'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        h2 {
+            color: #3498db;
+            margin-top: 30px;
+        }
+        a {
+            color: #3498db;
+        }
+        .back-button {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Privacy Policy</h1>
+    
+    <p>Last Updated: <%= new Date().toLocaleDateString() %></p>
+    
+    <p>This Privacy Policy describes how we collect, use, and disclose information when you use our WiFi service.</p>
+    
+    <h2>1. Information We Collect</h2>
+    <p>When you use our WiFi service, we may collect:</p>
+    <ul>
+        <li>Personal information you provide (e.g., name, email)</li>
+        <li>Device information (e.g., MAC address, device type)</li>
+        <li>Usage information (e.g., connection time, data usage)</li>
+        <li>Location data (based on access point connection)</li>
+    </ul>
+    
+    <h2>2. How We Use Information</h2>
+    <p>We may use the collected information to:</p>
+    <ul>
+        <li>Provide and maintain the WiFi service</li>
+        <li>Improve our service and user experience</li>
+        <li>Analyze usage patterns and traffic flow</li>
+        <li>Communicate with you about our services</li>
+        <li>Comply with legal obligations</li>
+    </ul>
+    
+    <h2>3. Information Sharing</h2>
+    <p>We may share information with:</p>
+    <ul>
+        <li>Service providers who help operate our WiFi</li>
+        <li>Law enforcement when required by law</li>
+        <li>Business partners (in aggregated, anonymized form)</li>
+    </ul>
+    
+    <h2>4. Data Security</h2>
+    <p>We implement reasonable security measures to protect your information. However, no internet transmission is completely secure.</p>
+    
+    <h2>5. Your Choices</h2>
+    <p>You can choose not to provide certain information, but this may limit your ability to use our WiFi service.</p>
+    
+    <h2>6. Changes to Policy</h2>
+    <p>We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page.</p>
+    
+    <a href="/" class="back-button">Back to Login</a>
+</body>
+</html>
+EOL
+print_status $? "Create privacy page"
 
-# Configure Nginx as reverse proxy
-section "Setting Up Nginx Reverse Proxy"
-cat > /etc/nginx/sites-available/howzit << EOF
+# Install Node.js dependencies
+print_section "Installing Node.js Dependencies"
+cd "$INSTALL_DIR"
+npm install --omit=dev
+print_status $? "Install Node.js packages" "critical"
+
+# Set up nginx as reverse proxy
+print_section "Setting Up Nginx Reverse Proxy"
+cat > "/etc/nginx/sites-available/howzit" << EOL
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -1641,76 +1686,134 @@ server {
         proxy_cache_bypass \$http_upgrade;
     }
 }
-EOF
+EOL
 
+# Enable the site and remove default site
 ln -sf /etc/nginx/sites-available/howzit /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 systemctl restart nginx
-check "Configure and start Nginx"
+print_status $? "Configure Nginx"
 
-section "Optimizing System Performance"
-# Increase file limits
-cat > /etc/security/limits.d/howzit.conf << EOF
-*               soft    nofile          65535
-*               hard    nofile          65535
-EOF
+# Set up and configure network
+print_section "Configuring Network"
+"$INSTALL_DIR/scripts/setup-network.sh"
+print_status $? "Configure network" "critical"
 
-# Optimize kernel parameters
-cat > /etc/sysctl.d/99-howzit-performance.conf << EOF
-# Increase maximum open files
-fs.file-max = 500000
+# Configure services to start on boot
+print_section "Enabling Services"
+systemctl daemon-reload
+systemctl enable hostapd dnsmasq
+systemctl restart hostapd
+print_status $? "Enable hostapd"
+systemctl restart dnsmasq
+print_status $? "Enable dnsmasq"
 
-# Increase TCP connection settings
-net.core.somaxconn = 65535
-net.core.netdev_max_backlog = 65535
-net.ipv4.tcp_max_syn_backlog = 65535
+systemctl enable howzit.service
+systemctl start howzit.service
+print_status $? "Start Howzit captive portal"
 
-# Increase TCP buffer sizes
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 87380 16777216
-net.ipv4.tcp_wmem = 4096 65536 16777216
+# Set proper permissions
+print_section "Setting Permissions"
+chown -R root:root "$INSTALL_DIR"
+chmod -R 755 "$INSTALL_DIR"
+chmod +x "$INSTALL_DIR/scripts/"*.sh
+print_status $? "Set proper permissions"
 
-# Optimize TCP connection timeouts
-net.ipv4.tcp_fin_timeout = 10
-net.ipv4.tcp_keepalive_time = 300
-net.ipv4.tcp_keepalive_probes = 5
-net.ipv4.tcp_keepalive_intvl = 15
-net.ipv4.tcp_tw_reuse = 1
-EOF
-
-sysctl -p /etc/sysctl.d/99-howzit-performance.conf
-check "Optimize system performance"
-
-# Create cron job for daily log rotation
-cat > /etc/cron.daily/howzit-logs << EOF
+# Create a simple startup script for convenience
+cat > "/usr/local/bin/howzit" << 'EOL'
 #!/bin/bash
-find /var/log/howzit -type f -name "*.log" -mtime +7 -delete
-find $INSTALL_DIR/logs -type f -name "*.log" -mtime +7 -delete
-EOF
-chmod +x /etc/cron.daily/howzit-logs
 
-# Installation complete
-section "Installation Complete"
-echo -e "${GREEN}Howzit captive portal has been successfully installed and configured!${NC}"
-echo
-echo -e "WiFi SSID: ${YELLOW}$WIFI_SSID${NC}"
+# Howzit Captive Portal Control Script
 
-if [ -n "$WIFI_PASSWORD" ]; then
-    echo -e "WiFi Password: ${YELLOW}$WIFI_PASSWORD${NC}"
-else
-    echo -e "WiFi configured as an ${YELLOW}open network${NC} (no password)"
+case "$1" in
+    start)
+        systemctl start hostapd dnsmasq howzit
+        echo "Howzit captive portal started"
+        ;;
+    stop)
+        systemctl stop howzit dnsmasq hostapd
+        echo "Howzit captive portal stopped"
+        ;;
+    restart)
+        systemctl restart hostapd dnsmasq howzit
+        echo "Howzit captive portal restarted"
+        ;;
+    status)
+        echo "Hostapd status:"
+        systemctl status hostapd | grep Active
+        echo "Dnsmasq status:"
+        systemctl status dnsmasq | grep Active
+        echo "Howzit status:"
+        systemctl status howzit | grep Active
+        ;;
+    logs)
+        journalctl -u howzit -n 50
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|logs}"
+        exit 1
+        ;;
+esac
+exit 0
+EOL
+chmod +x /usr/local/bin/howzit
+print_status $? "Create control script"
+
+# System service optimization
+print_section "Optimizing System"
+# Add swap to improve performance on low-memory Raspberry Pi
+if [ ! -f /swapfile ]; then
+    echo "Creating swap file to improve performance..."
+    dd if=/dev/zero of=/swapfile bs=1M count=512
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
+    print_status $? "Create swap file"
 fi
 
-echo
-echo -e "Admin URL: ${YELLOW}http://10.0.0.1/admin${NC}"
-echo -e "Admin Username: ${YELLOW}$ADMIN_USERNAME${NC}"
-echo -e "Admin Password: ${YELLOW}$ADMIN_PASSWORD${NC}"
-echo
-echo -e "Event Name: ${YELLOW}$EVENT_NAME${NC}"
-echo
-echo -e "${BLUE}To customize social login, visit the admin dashboard.${NC}"
-echo -e "${BLUE}Your WiFi network should now be broadcasting.${NC}"
-echo
+# Disable unnecessary services to free up resources
+echo "Disabling unnecessary services..."
+systemctl disable bluetooth.service
+systemctl disable avahi-daemon.service
+systemctl disable triggerhappy.service
+print_status $? "Disable unnecessary services"
 
-log "Installation completed successfully"
+# Installation complete
+print_section "Installation Complete"
+echo -e "${GREEN}Howzit captive portal has been successfully installed!${NC}"
+echo -e "\nWiFi Network:"
+echo -e "  ${BOLD}SSID:${NC} ${WIFI_SSID}"
+if [ -n "$WIFI_PASSWORD" ]; then
+    echo -e "  ${BOLD}Password:${NC} ${WIFI_PASSWORD}"
+else
+    echo -e "  ${BOLD}Type:${NC} Open Network (no password)"
+fi
+
+echo -e "\nAdmin Access:"
+echo -e "  ${BOLD}URL:${NC} http://10.0.0.1/admin"
+echo -e "  ${BOLD}Username:${NC} ${ADMIN_USER}"
+echo -e "  ${BOLD}Password:${NC} ${ADMIN_PASSWORD}"
+
+echo -e "\nControl Commands:"
+echo -e "  ${BOLD}Start:${NC} howzit start"
+echo -e "  ${BOLD}Stop:${NC} howzit stop"
+echo -e "  ${BOLD}Restart:${NC} howzit restart"
+echo -e "  ${BOLD}Status:${NC} howzit status"
+echo -e "  ${BOLD}Logs:${NC} howzit logs"
+
+echo -e "\nConfiguration Files:"
+echo -e "  Main config: ${INSTALL_DIR}/config/config.json"
+echo -e "  Network settings: /etc/hostapd/hostapd.conf"
+echo -e "  DHCP settings: /etc/dnsmasq.conf"
+
+echo -e "\n${BOLD}Note:${NC} Your Raspberry Pi will now act as a WiFi access point."
+echo -e "Connect to the WiFi network '${WIFI_SSID}' from any device to test the captive portal."
+
+# Optional reboot
+echo -e "\n${YELLOW}It's recommended to reboot your Raspberry Pi to ensure all changes take effect.${NC}"
+read -p "Would you like to reboot now? (y/n): " REBOOT
+if [[ $REBOOT =~ ^[Yy]$ ]]; then
+    echo "Rebooting system..."
+    reboot
+fi
