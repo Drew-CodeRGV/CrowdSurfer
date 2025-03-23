@@ -740,7 +740,21 @@ chmod +x /etc/network/if-up.d/iptables
 
 # Restart services
 echo "Restarting network services..."
-systemctl restart networking
+
+# Check which network service is available and restart it
+if systemctl is-active networking >/dev/null 2>&1; then
+  systemctl restart networking
+elif systemctl is-active dhcpcd >/dev/null 2>&1; then
+  systemctl restart dhcpcd
+elif systemctl is-active NetworkManager >/dev/null 2>&1; then
+  systemctl restart NetworkManager
+else
+  echo "Warning: No recognized networking service found. Manual network restart may be required."
+  # Try to restart the interface directly
+  ip link set ${WIFI_INTERFACE} down
+  ip link set ${WIFI_INTERFACE} up
+fi
+
 systemctl unmask hostapd
 systemctl enable hostapd
 systemctl restart hostapd
