@@ -34,7 +34,7 @@ Howzit is designed to be deployed inside "Barney boxes" - custom hardware units 
 
 ```bash
 # Install on a fresh Raspberry Pi
-wget -O install-howzit.sh https://raw.githubusercontent.com/drewlentz/CrowdSurfer/main/howzit-raspi/install-howzit.sh
+wget -O install-howzit.sh https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/howzit-raspi/install-howzit.sh
 chmod +x install-howzit.sh
 sudo ./install-howzit.sh
 
