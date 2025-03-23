@@ -733,39 +733,7 @@ EOF
 # Create core application file
 section "Creating Application Files"
 cat > "$INSTALL_DIR/app.js" << 'EOF'
-/**
- * Howzit Captive Portal
- * Main application file
- */
 
-const express = require('express');
-const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
-const passport = require('passport');
-const path = require('path');
-const fs = require('fs-extra');
-const morgan = require('morgan');
-const bodyParser = require('body-parser');
-const cookieParser = require('cookie-parser');
-const cluster = require('cluster');
-const numCPUs = require('os').cpus().length;
-const config = require('./config/default.json');
-const winston = require('winston');
-
-// Set up logger
-const logger = winston.createLogger({
-  level: config.system?.logLevel || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
-  ),
-  transports: [
-    new winston.transports.File({ filename: './logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: './logs/howzit.log' })
-  ]
-});
-
-if (process.env.NODE_ENV !== 'production
 /**
  * Howzit Captive Portal
  * Main application file
