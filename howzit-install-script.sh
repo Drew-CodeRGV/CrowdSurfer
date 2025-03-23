@@ -655,8 +655,14 @@ EOF
 # Configure network interfaces
 echo "Configuring network interfaces..."
 
-# Configure WiFi interface
-cat > /etc/network/interfaces.d/wlan0 << EOF
+# Configure network interfaces
+echo "Configuring network interfaces..."
+
+# Check which networking system is in use
+if [ -d "/etc/network/interfaces.d" ]; then
+    # Older networking style with interfaces.d
+    mkdir -p /etc/network/interfaces.d
+    cat > /etc/network/interfaces.d/wlan0 << EOF
 allow-hotplug ${WIFI_INTERFACE}
 iface ${WIFI_INTERFACE} inet static
     address 10.0.0.1
@@ -665,11 +671,22 @@ iface ${WIFI_INTERFACE} inet static
     broadcast 10.0.0.255
 EOF
 
-# Configure ethernet interface (if available)
-cat > /etc/network/interfaces.d/eth0 << EOF
+    cat > /etc/network/interfaces.d/eth0 << EOF
 allow-hotplug ${ETHERNET_INTERFACE}
 iface ${ETHERNET_INTERFACE} inet dhcp
 EOF
+elif [ -f "/etc/dhcpcd.conf" ]; then
+    # Newer networking style with dhcpcd
+    cat >> /etc/dhcpcd.conf << EOF
+
+# Configuration added by Howzit installer
+interface ${WIFI_INTERFACE}
+    static ip_address=10.0.0.1/24
+    nohook wpa_supplicant
+EOF
+else
+    echo "Warning: Could not detect network configuration method. Manual configuration may be required."
+fi
 
 # Configure IP forwarding and NAT
 echo "Configuring IP forwarding and NAT..."
