@@ -303,7 +303,7 @@ fi
 
 # Install Node.js dependencies
 cd "$INSTALL_DIR"
-npm install --production --no-fund --no-audit
+npm install --omit=dev --no-fund --no-audit
 check "Install Node.js dependencies" "critical"
 
 section "Creating Network Configuration Files"
