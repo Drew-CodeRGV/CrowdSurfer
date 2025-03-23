@@ -614,6 +614,27 @@ WIFI_SSID="${WIFI_SSID}"
 WIFI_PASSWORD="${WIFI_PASSWORD}"
 AP_IP="10.0.0.1"
 
+# Function to restart networking based on what's available
+restart_networking() {
+  echo "Restarting network services..."
+  
+  # Check which network service is available and restart it
+  if systemctl list-unit-files | grep -q "networking.service"; then
+    systemctl restart networking || echo "Failed to restart networking, but continuing..."
+  elif systemctl list-unit-files | grep -q "dhcpcd.service"; then
+    systemctl restart dhcpcd || echo "Failed to restart dhcpcd, but continuing..."
+  elif systemctl list-unit-files | grep -q "NetworkManager.service"; then
+    systemctl restart NetworkManager || echo "Failed to restart NetworkManager, but continuing..."
+  else
+    echo "Warning: No recognized networking service found. Restarting interfaces directly."
+    # Try to restart the interface directly
+    ip link set \${WIFI_INTERFACE} down 2>/dev/null || true
+    ip link set \${WIFI_INTERFACE} up 2>/dev/null || true
+    ip link set \${ETHERNET_INTERFACE} down 2>/dev/null || true
+    ip link set \${ETHERNET_INTERFACE} up 2>/dev/null || true
+  fi
+}
+
 # Configure hostapd for WiFi access point
 echo "Configuring hostapd for WiFi access point..."
 cat > /etc/hostapd/hostapd.conf << EOF
@@ -743,7 +764,18 @@ echo "Restarting network services..."
 
 # Check which network service is available and restart it
 if systemctl is-active networking >/dev/null 2>&1; then
-  systemctl restart networking
+  # Restart networking - handle both old and new Raspberry Pi OS
+if systemctl list-unit-files | grep -q "networking.service"; then
+  systemctl restart networking || echo "Failed to restart networking, but continuing..."
+elif systemctl list-unit-files | grep -q "dhcpcd.service"; then
+  systemctl restart dhcpcd || echo "Failed to restart dhcpcd, but continuing..."
+elif systemctl list-unit-files | grep -q "NetworkManager.service"; then
+  systemctl restart NetworkManager || echo "Failed to restart NetworkManager, but continuing..."
+else
+  echo "Warning: No recognized networking service found. Continuing without restart."
+  ip link set wlan0 down 2>/dev/null || true
+  ip link set wlan0 up 2>/dev/null || true
+fi
 elif systemctl is-active dhcpcd >/dev/null 2>&1; then
   systemctl restart dhcpcd
 elif systemctl is-active NetworkManager >/dev/null 2>&1; then
@@ -755,6 +787,9 @@ else
   ip link set ${WIFI_INTERFACE} up
 fi
 
+# Restart services
+echo "Restarting network services..."
+restart_networking
 systemctl unmask hostapd
 systemctl enable hostapd
 systemctl restart hostapd
