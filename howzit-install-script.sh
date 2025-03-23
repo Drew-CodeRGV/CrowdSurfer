@@ -688,37 +688,43 @@ else
     echo "Warning: Could not detect network configuration method. Manual configuration may be required."
 fi
 
-# Configure IP forwarding and NAT
+# Reset iptables completely to ensure we start fresh
+echo "Resetting iptables chains and rules..."
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t nat -X
+iptables -t mangle -F
+iptables -t mangle -X
+iptables -P INPUT ACCEPT
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+
+# Configure IP forwarding
 echo "Configuring IP forwarding and NAT..."
 echo 1 > /proc/sys/net/ipv4/ip_forward
 echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/90-ip-forward.conf
 sysctl -p /etc/sysctl.d/90-ip-forward.conf
 
-# Configure iptables
+# Now set up our chains from scratch
+echo "Configuring iptables for captive portal..."
+
+# IP forwarding
 iptables -t nat -A POSTROUTING -o ${ETHERNET_INTERFACE} -j MASQUERADE
 iptables -A FORWARD -i ${ETHERNET_INTERFACE} -o ${WIFI_INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -i ${WIFI_INTERFACE} -o ${ETHERNET_INTERFACE} -j ACCEPT
 
-# Configure captive portal redirection
-# First, check if chains already exist, if not create them
-iptables -t nat -L CAPTIVE_PORTAL >/dev/null 2>&1 || iptables -t nat -N CAPTIVE_PORTAL
-iptables -t nat -L AUTHENTICATED >/dev/null 2>&1 || iptables -t nat -N AUTHENTICATED
+# Create captive portal chains
+iptables -t nat -N CAPTIVE_PORTAL
+iptables -t nat -N AUTHENTICATED
 
-# Flush existing rules in these chains to ensure a clean state
-iptables -t nat -F CAPTIVE_PORTAL 2>/dev/null || true
-iptables -t nat -F AUTHENTICATED 2>/dev/null || true
-
-# Remove existing references to our chains from PREROUTING to avoid duplicates
-iptables -t nat -D PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL 2>/dev/null || true
-iptables -t nat -D PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL 2>/dev/null || true
-iptables -t nat -D CAPTIVE_PORTAL -j AUTHENTICATED 2>/dev/null || true
-
-# Add our rules
+# Set up captive portal redirection
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
 iptables -t nat -A CAPTIVE_PORTAL -p tcp -j DNAT --to-destination ${AP_IP}:3000
 iptables -t nat -A CAPTIVE_PORTAL -j AUTHENTICATED
 iptables -t nat -A AUTHENTICATED -j RETURN
+
 
 # Save iptables rules
 mkdir -p /etc/iptables
