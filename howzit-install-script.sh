@@ -759,6 +759,9 @@ fi
 MAC=$(echo "$1" | tr 'a-z' 'A-Z')
 echo "Adding client $MAC to authenticated list..."
 
+# Remove any existing rule for this MAC to avoid duplicates
+iptables -t nat -D AUTHENTICATED -p tcp -m mac --mac-source "$MAC" -j RETURN 2>/dev/null || true
+
 # Add client to the AUTHENTICATED chain
 iptables -t nat -A AUTHENTICATED -p tcp -m mac --mac-source "$MAC" -j RETURN
 
