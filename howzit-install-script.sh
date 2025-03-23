@@ -703,7 +703,7 @@ iptables -A FORWARD -i ${WIFI_INTERFACE} -o ${ETHERNET_INTERFACE} -j ACCEPT
 iptables -t nat -N CAPTIVE_PORTAL
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL
 iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
-iptables -t nat -A CAPTIVE_PORTAL -j DNAT --to-destination ${AP_IP}:3000
+iptables -t nat -A CAPTIVE_PORTAL -p tcp -j DNAT --to-destination ${AP_IP}:3000
 
 # Create AUTHENTICATED chain for clients that have completed registration
 iptables -t nat -N AUTHENTICATED
@@ -750,7 +750,7 @@ MAC=$(echo "$1" | tr 'a-z' 'A-Z')
 echo "Adding client $MAC to authenticated list..."
 
 # Add client to the AUTHENTICATED chain
-iptables -t nat -A AUTHENTICATED -m mac --mac-source "$MAC" -j RETURN
+iptables -t nat -A AUTHENTICATED -p tcp -m mac --mac-source "$MAC" -j RETURN
 
 # Save iptables rules
 iptables-save > /etc/iptables/rules.v4
