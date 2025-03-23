@@ -679,14 +679,14 @@ echo "DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"" > /etc/default/hostapd
 log_message "Configuring dnsmasq..."
 cat > /etc/dnsmasq.conf << EOF
 # Interface to bind to
-interface=${WIFI_INTERFACE}
+interface=${ETHERNET_INTERFACE}
 # Don't use the host /etc/resolv.conf
 no-resolv
 # Use Google DNS server
 server=8.8.8.8
 server=8.8.4.4
 # Set domain for local network
-domain=wlan
+domain=lan
 # DHCP range and lease time
 dhcp-range=10.0.0.2,10.0.0.100,255.255.255.0,24h
 # Redirect all domains to captive portal
@@ -694,7 +694,7 @@ address=/#/10.0.0.1
 # Set the gateway and DNS server to be the Pi
 dhcp-option=3,10.0.0.1
 dhcp-option=6,10.0.0.1
-# Bind only to WiFi interface
+# Bind only to Ethernet interface
 bind-interfaces
 # Don't forward short names
 domain-needed
@@ -793,17 +793,17 @@ iptables -A INPUT -p tcp --dport 53 -j ACCEPT
 # Allow DHCP (port 67 and 68) for network configuration
 iptables -A INPUT -p udp --dport 67:68 -j ACCEPT
 
-# Set up NAT for forwarding traffic from WiFi to Ethernet
-iptables -t nat -A POSTROUTING -o ${ETHERNET_INTERFACE} -j MASQUERADE
-iptables -A FORWARD -i ${WIFI_INTERFACE} -o ${ETHERNET_INTERFACE} -j ACCEPT
+# Set up NAT for forwarding traffic from Ethernet to WiFi (access point)
+iptables -t nat -A POSTROUTING -o ${WIFI_INTERFACE} -j MASQUERADE
+iptables -A FORWARD -i ${ETHERNET_INTERFACE} -o ${WIFI_INTERFACE} -j ACCEPT
 
 # Create captive portal chains
 iptables -t nat -N CAPTIVE_PORTAL
 iptables -t nat -N AUTHENTICATED
 
 # Redirect HTTP and HTTPS traffic to captive portal
-iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL
-iptables -t nat -A PREROUTING -i ${WIFI_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
+iptables -t nat -A PREROUTING -i ${ETHERNET_INTERFACE} -p tcp --dport 80 -j CAPTIVE_PORTAL
+iptables -t nat -A PREROUTING -i ${ETHERNET_INTERFACE} -p tcp --dport 443 -j CAPTIVE_PORTAL
 
 # Configure the CAPTIVE_PORTAL chain to redirect to the portal server
 iptables -t nat -A CAPTIVE_PORTAL -p tcp -j DNAT --to-destination ${AP_IP}:3000
