@@ -751,7 +751,7 @@ EOL
 chmod +x "$INSTALL_DIR/scripts/setup-network.sh"
 print_status $? "Create network setup script"
 
-# Create client authentication script
+## Create client authentication script
 cat > "$INSTALL_DIR/scripts/allow-client.sh" << 'EOL'
 #!/bin/bash
 
