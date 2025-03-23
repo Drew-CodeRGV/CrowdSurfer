@@ -599,8 +599,12 @@ cat > "$INSTALL_DIR/scripts/setup-network.sh" << EOL
 set -e
 
 # Configuration values
-ETHERNET_INTERFACE="${ETHERNET_INTERFACE}"
+# Detect the actual ethernet interface
+ETHERNET_INTERFACE=$(ip link show | grep -v lo | grep -v wlan | grep -v dummy | awk -F: '/^[0-9]+:/{print $2}' | tr -d ' ' | head -n 1)
 AP_IP="10.0.0.1"
+
+# Log the detected interface
+log_message "Using ethernet interface: $ETHERNET_INTERFACE"
 
 # Function to log messages
 log_message() {
@@ -614,17 +618,18 @@ systemctl stop dnsmasq || true
 # Configure dnsmasq for DHCP and DNS
 log_message "Configuring dnsmasq..."
 cat > /etc/dnsmasq.conf << EOF
-# Interface to bind to
-interface=${ETHERNET_INTERFACE}
+# Listen on all interfaces
+bind-interfaces
 # Don't use the host /etc/resolv.conf
 no-resolv
+
 # Use Google DNS server
 server=8.8.8.8
 server=8.8.4.4
 # Set domain for local network
 domain=lan
-# DHCP range and lease time
-dhcp-range=10.0.0.2,10.0.0.100,255.255.255.0,24h
+# DHCP range and lease time - 2,000 leases with 30 minute expiry
+dhcp-range=10.0.0.2,10.0.0.254,10.0.1.1,10.0.8.50,255.255.248.0,30m
 # Redirect all domains to captive portal
 address=/#/10.0.0.1
 # Set the gateway and DNS server to be the Pi
