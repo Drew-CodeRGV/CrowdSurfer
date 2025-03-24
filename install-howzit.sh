@@ -676,7 +676,7 @@ server=8.8.4.4
 # Set domain for local network
 domain=lan
 # DHCP range and lease time - 2,000 leases with 30 minute expiry
-dhcp-range=10.0.0.2,10.0.8.50,255.255.248.0,30m
+dhcp-range=10.0.0.2,10.0.7.254,30m
 # Redirect all domains to captive portal
 address=/#/\${AP_IP}
 # Set the gateway and DNS server to be the Pi
