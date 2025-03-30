@@ -1,19 +1,56 @@
 #!/bin/bash
 # install_howzit.sh
+# SCRIPT_VERSION must be updated on each new release.
+SCRIPT_VERSION="1.0.0"
+REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
+
+# Function: Check for script update
+function check_for_update {
+    # Ensure curl is available.
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "curl not found. Installing curl..."
+        apt-get update && apt-get install -y curl
+    fi
+
+    echo "Checking for script updates..."
+    REMOTE_SCRIPT=$(curl -fsSL "$REMOTE_URL")
+    if [ $? -ne 0 ] || [ -z "$REMOTE_SCRIPT" ]; then
+        echo "Unable to retrieve remote script. Skipping update check."
+        return
+    fi
+
+    # Extract the remote version (assumes a line like: SCRIPT_VERSION="1.0.1")
+    REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^SCRIPT_VERSION=' | head -n 1 | cut -d'=' -f2 | tr -d '"')
+    if [ -z "$REMOTE_VERSION" ]; then
+        echo "Unable to determine remote version. Skipping update."
+        return
+    fi
+
+    if [ "$REMOTE_VERSION" != "$SCRIPT_VERSION" ]; then
+        echo "New version available ($REMOTE_VERSION). Updating..."
+        NEW_SCRIPT="/tmp/install_howzit.sh.new"
+        curl -fsSL "$REMOTE_URL" -o "$NEW_SCRIPT"
+        if [ $? -eq 0 ]; then
+            chmod +x "$NEW_SCRIPT"
+            echo "Update downloaded. Replacing current script and restarting..."
+            mv "$NEW_SCRIPT" "$0"
+            exec "$0" "$@"
+        else
+            echo "Failed to download the new version. Continuing with the current version."
+        fi
+    else
+        echo "Script is up-to-date (version $SCRIPT_VERSION)."
+    fi
+}
+
+# Run update check first.
+check_for_update
+
+# --- Main Installation Script Below ---
 # This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
 # It displays an ASCII art header, prompts for key settings, and shows a concise progress status.
 # It then verifies and installs required dependencies, writes the Python captive portal code,
 # and creates a systemd service that starts Howzit automatically at boot.
-#
-# Configurable Parameters:
-# - Device Name (default: Howzit01)
-# - Captive Portal Interface (default: eth0)
-# - Internet Interface (default: eth1)
-# - CSV Registration Timeout in seconds (default: 300)
-# - Email Address to send CSV (default: cs@drewlentz.com)
-#
-# This script is for Debian-based systems (e.g., Raspberry Pi OS).
-# Run as root.
 
 # Check for root privileges.
 if [ "$EUID" -ne 0 ]; then 
@@ -38,11 +75,19 @@ clear
 
 # --- ASCII Art Header (Sub-Zero style) ---
 cat << "EOF"
- __  __     ______     __     __     ______     __     ______ 
-/\ \_\ \   /\  __ \   /\ \  _ \ \   /\___  \   /\ \   /\__  _\
-\ \  __ \  \ \ \/\ \  \ \ \/ ".\ \  \/_/  /__  \ \ \  \/_/\ \/
- \ \_\ \_\  \ \_____\  \ \__/".~\_\   /\_____\  \ \_\    \ \_\
-  \/_/\/_/   \/_____/   \/_/   \/_/   \/_____/   \/_/     \/_/
+  ___    ___   ______   ______  ________   ______   ________  ______   ______  
+ / _ \  / _ \ | ___ \  | ___ \ |  ___| \ | ___ \ |  ___| \| ___ \ | ___ \ | ___ \
+/ /_\ \| /_\ \| |_/ /  | |_/ / | |__|  \| |_/ / | |__|  \| |_/ / | |_/ / | |_/ /
+|  _  ||  _  ||    /   |  __/  |  __| . `  __/  |  __| . `  __/  |    /  |    / 
+| | | || | | || |\ \   | |     | |__| |\  |     | |__| |\  |     | |\ \  | |\ \ 
+\_| |_/\_| |_/\_| \_|  \_|     \____/\_| \_|     \____/\_| \_|     \_| \_| \_| \_|
+                                                                                 
+         ___   ___  _   _   _____  _____  ___  
+        / _ \ |   \| | | | |_   _||  ___|/ _ \ 
+       | | | || |\ | | | |   | |  | |_  | | | |
+       | | | || | \| | | |   | |  |  _| | | | |
+       | |_| || |  | | |_|   | |  | |   | |_| |
+        \___/ |_|  |_|\___/  |_|  |_|    \___/ 
 EOF
 
 echo ""
