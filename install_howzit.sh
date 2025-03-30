@@ -84,11 +84,19 @@ clear
 
 # --- ASCII Art Header (Sub-Zero style) ---
 cat << "EOF"
- __  __     ______     __     __     ______     __     ______    
-/\ \_\ \   /\  __ \   /\ \  _ \ \   /\___  \   /\ \   /\__  _\   
-\ \  __ \  \ \ \/\ \  \ \ \/ ".\ \  \/_/  /__  \ \ \  \/_/\ \/   
- \ \_\ \_\  \ \_____\  \ \__/".~\_\   /\_____\  \ \_\    \ \_\   
-  \/_/\/_/   \/_____/   \/_/   \/_/   \/_____/   \/_/     \/_/   
+  ___    ___   ______   ______  ________   ______   ________  ______   ______  
+ / _ \  / _ \ | ___ \  | ___ \ |  ___| \ | ___ \ |  ___| \| ___ \ | ___ \ | ___ \
+/ /_\ \| /_\ \| |_/ /  | |_/ / | |__|  \| |_/ / | |__|  \| |_/ / | |_/ / | |_/ /
+|  _  ||  _  ||    /   |  __/  |  __| . `  __/  |  __| . `  __/  |    /  |    / 
+| | | || | | || |\ \   | |     | |__| |\  |     | |__| |\  |     | |\ \  | |\ \ 
+\_| |_/\_| |_/\_| \_|  \_|     \____/\_| \_|     \____/\_| \_|     \_| \_| \_| \_|
+                                                                                 
+         ___   ___  _   _   _____  _____  ___  
+        / _ \ |   \| | | | |_   _||  ___|/ _ \ 
+       | | | || |\ | | | |   | |  | |_  | | | |
+       | | | || | \| | | |   | |  |  _| | | | |
+       | |_| || |  | | |_|   | |  | |   | |_| |
+        \___/ |_|  |_|\___/  |_|  |_|    \___/ 
 EOF
 
 echo ""
@@ -161,11 +169,14 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Configure dnsmasq for DHCP on CP_INTERFACE ---
 echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
-# Use a /21 network (netmask 255.255.248.0) for a pool from 192.168.4.10 to 192.168.11.254 with a 15m lease,
+# Remove any existing dhcp-range and interface lines to avoid conflicts.
+sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
+sed -i '/^interface=/d' /etc/dnsmasq.conf
+# Append our correct configuration: using a /21 network (255.255.248.0) for addresses 192.168.4.10 to 192.168.11.254, 15m lease,
 # and set DNS servers to 8.8.8.8 and 192.168.4.1.
-grep -q "^interface=${CP_INTERFACE}" /etc/dnsmasq.conf || echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
-grep -q "^dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" /etc/dnsmasq.conf || echo "dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" >> /etc/dnsmasq.conf
-grep -q "^dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" /etc/dnsmasq.conf || echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
+echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
+echo "dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" >> /etc/dnsmasq.conf
+echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.11.254, Lease: 15m, DNS: 8.8.8.8 & 192.168.4.1)."
 sleep 0.5
