@@ -1,7 +1,7 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.5"
+SCRIPT_VERSION="1.0.7"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # Function: Check for script update from GitHub.
@@ -43,23 +43,32 @@ check_for_update
 
 # --- Main Installation Script Below ---
 # This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
-# It displays an ASCII art header, prompts for key settings, verifies dependencies,
-# removes unwanted VNC packages, writes the Python captive portal code,
-# and creates a systemd service that starts Howzit automatically at boot.
+# It:
+#   - Displays an ASCII art header.
+#   - Prompts for key settings, including whether to use an attached 1.5" OLED display.
+#   - Verifies and installs required dependencies (and OLED dependencies if selected).
+#   - Removes unwanted VNC packages.
+#   - Writes the captive portal Python code (which now shows "Howzit!" on boot and updates status on the OLED if enabled).
+#   - Creates a systemd service that starts Howzit automatically at boot.
 #
-# The captive portal is bound explicitly to 192.168.4.1 (CP_INTERFACE) with a /21 network,
-# offering a DHCP pool of 2048 addresses with a 15-minute lease.
-#
-# Additionally, you can check connected clients from the command line with:
-#    sudo wc -l /var/lib/misc/dnsmasq.leases
-# and revoke (expire) all leases from the admin webpage.
+# The captive portal is bound to 192.168.4.1 on CP_INTERFACE and uses a /21 network,
+# providing a DHCP pool from 192.168.4.10 to 192.168.11.254 with a 15-minute lease.
+# DHCP clients will be given DNS servers: primary 8.8.8.8 and secondary 192.168.4.1.
 
 if [ "$EUID" -ne 0 ]; then 
   echo "Please run as root."
   exit 1
 fi
 
-# Function to update a status bar.
+# --- Ask if OLED display is to be used ---
+read -p "Use OLED display to show status? [Y/n]: " USE_OLED_CHOICE
+if [[ -z "$USE_OLED_CHOICE" || "$USE_OLED_CHOICE" =~ ^[Yy] ]]; then
+    USE_OLED_PY="True"
+else
+    USE_OLED_PY="False"
+fi
+
+# --- Function to update a status bar ---
 function update_status {
     local step=$1
     local total=$2
@@ -69,7 +78,7 @@ function update_status {
     echo -ne "\033[u"
 }
 
-TOTAL_STEPS=7
+TOTAL_STEPS=8
 CURRENT_STEP=1
 clear
 
@@ -109,6 +118,7 @@ echo "  Captive Portal Interface: $CP_INTERFACE"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV Email:                $CSV_EMAIL"
+echo "  Use OLED Display:         $USE_OLED_PY"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
 sleep 0.5
@@ -138,14 +148,21 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
+
+# If OLED is enabled, install pip3 and OLED libraries.
+if [ "$USE_OLED_PY" = "True" ]; then
+    apt-get install -y python3-pip
+    pip3 install luma.oled pillow
+fi
+
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Configure dnsmasq for DHCP on CP_INTERFACE ---
 echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
-# Using a /21 network (netmask 255.255.248.0) to provide a pool of ~2048 addresses (192.168.4.10 to 192.168.11.254)
-# with a lease time of 15 minutes, and setting DNS servers (primary: 8.8.8.8, secondary: 192.168.4.1)
+# Use a /21 network (netmask 255.255.248.0) for a pool from 192.168.4.10 to 192.168.11.254 with a 15m lease,
+# and set DNS servers to 8.8.8.8 and 192.168.4.1.
 grep -q "^interface=${CP_INTERFACE}" /etc/dnsmasq.conf || echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 grep -q "^dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" /etc/dnsmasq.conf || echo "dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" >> /etc/dnsmasq.conf
 grep -q "^dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" /etc/dnsmasq.conf || echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
@@ -170,6 +187,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
+
+# Use the OLED display if enabled.
+USE_OLED = ${USE_OLED_PY}
 
 app = Flask("${DEVICE_NAME}")
 
@@ -273,7 +293,6 @@ def admin():
     except Exception:
         df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
     total_registrations = len(df)
-    # Admin page with a button to revoke all leases.
     return f"""
     <html>
       <head><title>{DEVICE_NAME} - Admin</title></head>
@@ -294,7 +313,6 @@ def admin():
     </html>
     """
 
-# New endpoint to revoke leases and block client IPs via iptables.
 @app.route('/admin/revoke', methods=['POST'])
 def revoke_leases():
     leases_file = "/var/lib/misc/dnsmasq.leases"
@@ -319,6 +337,47 @@ def revoke_leases():
 @app.route('/download_csv')
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
+
+# If OLED display is enabled, initialize it and start a background thread to update status.
+if USE_OLED:
+    try:
+         from luma.core.interface.serial import i2c
+         from luma.oled.device import ssd1331
+         from PIL import Image, ImageDraw, ImageFont
+         serial = i2c(port=1, address=0x3C)
+         device = ssd1331(serial)
+         font = ImageFont.load_default()
+         image = Image.new("RGB", (device.width, device.height))
+         draw = ImageDraw.Draw(image)
+         draw.text((0,0), "Howzit!", fill="white", font=font)
+         device.display(image)
+    except Exception as e:
+         print("OLED display initialization failed:", e)
+
+    def oled_status_update():
+         import time
+         from PIL import Image, ImageDraw, ImageFont
+         from luma.core.interface.serial import i2c
+         from luma.oled.device import ssd1331
+         serial = i2c(port=1, address=0x3C)
+         device = ssd1331(serial)
+         font = ImageFont.load_default()
+         while True:
+             try:
+                 with open("/var/lib/misc/dnsmasq.leases", "r") as f:
+                     leases = f.readlines()
+                 active_leases = len(leases)
+             except:
+                 active_leases = 0
+             image = Image.new("RGB", (device.width, device.height))
+             draw = ImageDraw.Draw(image)
+             draw.text((0,0), "System Ready", fill="white", font=font)
+             draw.text((0,10), f"Leases: {active_leases} / 2048", fill="white", font=font)
+             device.display(image)
+             time.sleep(10)
+    import threading
+    t = threading.Thread(target=oled_status_update, daemon=True)
+    t.start()
 
 if __name__ == '__main__':
     init_csv()
@@ -377,4 +436,5 @@ echo "  CSV will be emailed to:    $CSV_EMAIL"
 echo "  DHCP Pool:                192.168.4.10 - 192.168.11.254 (/21)"
 echo "  Lease Time:               15 minutes"
 echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 192.168.4.1 (secondary)"
+echo "  OLED Display:             $USE_OLED_PY"
 echo "-----------------------------------------"
