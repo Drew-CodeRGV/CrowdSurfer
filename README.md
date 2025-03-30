@@ -1,10 +1,11 @@
 # Howzit Captive Portal Service
-
+```
  __  __     ______     __     __     ______     __     ______    
 /\ \_\ \   /\  __ \   /\ \  _ \ \   /\___  \   /\ \   /\__  _\   
 \ \  __ \  \ \ \/\ \  \ \ \/ ".\ \  \/_/  /__  \ \ \  \/_/\ \/   
  \ \_\ \_\  \ \_____\  \ \__/".~\_\   /\_____\  \ \_\    \ \_\   
-  \/_/\/_/   \/_____/   \/_/   \/_/   \/_____/   \/_/     \/_/   
+  \/_/\/_/   \/_____/   \/_/   \/_/   \/_____/   \/_/     \/_/
+```
 
 Howzit is a captive portal service designed for the Raspberry Pi 4. It automatically sets up a captive portal on the built-in Ethernet (eth0) interface, routes traffic via an attached USB Ethernet adapter (eth1) or WiFi (wlan0), and provides a splash page for event registrations. User information is collected via a form, stored in a CSV file, and emailed after 5 minutes of inactivity. An admin page lets you update the splash header and view statistics with charts.
 
