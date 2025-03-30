@@ -1,42 +1,46 @@
-# CrowdSurfer - Howzit Captive Portal
+# Howzit Captive Portal Service
 
-## About
+Howzit is a captive portal service designed for the Raspberry Pi 4. It automatically sets up a captive portal on the built-in Ethernet (eth0) interface, routes traffic via an attached USB Ethernet adapter (eth1) or WiFi (wlan0), and provides a splash page for event registrations. User information is collected via a form, stored in a CSV file, and emailed after 5 minutes of inactivity. An admin page lets you update the splash header and view statistics with charts.
 
-CrowdSurfer's Howzit captive portal is an audience intelligence system designed to run on Raspberry Pi devices. It provides a captive portal WiFi solution for events, collecting valuable user data while offering WiFi access.
+## Features
 
-## Key Features
+- **Automated Installation & Configuration**  
+  Installs all necessary system packages and Python dependencies on a fresh Raspberry Pi (Debian-based systems).
 
-- **Captive Portal**: Intercepts web traffic on WiFi and USB-connected devices, redirecting to a registration splash page
-- **Multi-Authentication**: Social login (Google, Facebook, Twitter, Apple) and direct form registration
-- **High Capacity**: Supports approximately 6,000 concurrent connections with 30-minute lease times
-- **Intelligent Routing**: WiFi and USB-connected devices see the captive portal while Ethernet connections bypass it
-- **Data Collection**: Captures user information (name, email, ZIP code, etc.) and device metadata
-- **Real-time Backups**: Stores data in local CSV with minute-by-minute backups
-- **Google Sheets Integration**: Automatically exports data to Google Sheets with event-specific naming
-- **Admin Dashboard**: Web interface for configuration, monitoring, and data management
-- **Automated Setup**: One-click installation script for fresh Raspberry Pi deployment
+- **Network Setup & NAT**  
+  Configures eth0 with a static IP (192.168.4.1/24), enables IP forwarding, and sets up NAT with iptables. All HTTP traffic on eth0 is redirected to the captive portal.
 
-## Technical Details
+- **Captive Portal with Registration Form**  
+  Provides a splash page with a customizable header ("Welcome to the event!" by default) and a registration form that collects:
+  - First Name
+  - Last Name
+  - Birthday (YYYY-MM-DD)
+  - Zip Code
+  - Email
+  - Gender
 
-The system is built using:
-- Node.js and Express for the web application
-- Hostapd for WiFi access point management
-- Dnsmasq for DHCP and DNS services
-- Iptables for network traffic routing
-- SQLite for session storage
-- Custom network configuration to handle different interface types
+- **CSV Management & Emailing**  
+  Saves registrations to a CSV file (named using the current date/hour and a random 4-digit number). After 5 minutes of inactivity, the CSV is emailed to `cs@drewlentz.com`, and a new CSV session starts.
 
-## Deployment
+- **Admin Management Page**  
+  Accessible at `/admin`, this page allows you to:
+  - Update the splash header
+  - View the total number of registrations
+  - See charts for gender breakdown (pie chart), zip code distribution (bar chart), and age groups (bar chart)
+  - Download the CSV file
 
-Howzit is designed to be deployed inside "Barney boxes" - custom hardware units that combine a Raspberry Pi with enterprise-grade access points, providing both data collection and WiFi service in a portable package.
+- **Autostart on Boot**  
+  A systemd service ensures that Howzit automatically starts at boot.
 
-## Quick Start
+## Installation
 
-```bash
-# Install on a fresh Raspberry Pi
-wget -O install-howzit.sh https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/howzit-raspi/install-howzit.sh
-chmod +x install-howzit.sh
-sudo ./install-howzit.sh
+This repository contains the installation script `install_howzit.sh`. To install and run Howzit on your Raspberry Pi, follow these steps:
 
-# Or customize your installation
-sudo ./install-howzit.sh --ssid "My Event WiFi" --password "secure123" --event "Summer Festival 2025"
+1. **Download the Script**
+
+   Clone this repository or download the `install_howzit.sh` file.
+
+2. **Make the Script Executable**
+
+   ```bash
+   chmod +x install_howzit.sh
