@@ -1,31 +1,26 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.2"
+SCRIPT_VERSION="1.0.5"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # Function: Check for script update from GitHub.
 function check_for_update {
-    # Ensure curl is available.
     if ! command -v curl >/dev/null 2>&1; then
         echo "curl not found. Installing curl..."
         apt-get update && apt-get install -y curl
     fi
-
     echo "Checking for script updates..."
     REMOTE_SCRIPT=$(curl -fsSL "$REMOTE_URL")
     if [ $? -ne 0 ] || [ -z "$REMOTE_SCRIPT" ]; then
         echo "Unable to retrieve remote script. Skipping update check."
         return
     fi
-
-    # Extract the remote version (line like: SCRIPT_VERSION="1.0.2")
     REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^SCRIPT_VERSION=' | head -n 1 | cut -d'=' -f2 | tr -d '"')
     if [ -z "$REMOTE_VERSION" ]; then
         echo "Unable to determine remote version. Skipping update."
         return
     fi
-
     if [ "$REMOTE_VERSION" != "$SCRIPT_VERSION" ]; then
         echo "New version available ($REMOTE_VERSION). Updating..."
         NEW_SCRIPT="/tmp/install_howzit.sh.new"
@@ -52,9 +47,13 @@ check_for_update
 # removes unwanted VNC packages, writes the Python captive portal code,
 # and creates a systemd service that starts Howzit automatically at boot.
 #
-# Note: The captive portal is bound explicitly to 192.168.4.1 (on the CP_INTERFACE).
+# The captive portal is bound explicitly to 192.168.4.1 (CP_INTERFACE) with a /21 network,
+# offering a DHCP pool of 2048 addresses with a 15-minute lease.
+#
+# Additionally, you can check connected clients from the command line with:
+#    sudo wc -l /var/lib/misc/dnsmasq.leases
+# and revoke (expire) all leases from the admin webpage.
 
-# Check for root privileges.
 if [ "$EUID" -ne 0 ]; then 
   echo "Please run as root."
   exit 1
@@ -65,14 +64,13 @@ function update_status {
     local step=$1
     local total=$2
     local message=$3
-    echo -ne "\033[s\033[999;0H"  # Save cursor and move to bottom.
+    echo -ne "\033[s\033[999;0H"
     printf "[%d/%d] %s\033[K\n" "$step" "$total" "$message"
-    echo -ne "\033[u"             # Restore cursor.
+    echo -ne "\033[u"
 }
 
 TOTAL_STEPS=7
 CURRENT_STEP=1
-
 clear
 
 # --- ASCII Art Header (Sub-Zero style) ---
@@ -87,7 +85,6 @@ EOF
 echo ""
 echo "Welcome to the Howzit Captive Portal Setup Wizard!"
 echo ""
-
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 1: Header displayed."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
@@ -96,16 +93,12 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 echo "Configuration Setup:"
 read -p "Enter Device Name [Howzit01]: " DEVICE_NAME
 DEVICE_NAME=${DEVICE_NAME:-Howzit01}
-
 read -p "Enter Captive Portal Interface [eth0]: " CP_INTERFACE
 CP_INTERFACE=${CP_INTERFACE:-eth0}
-
 read -p "Enter Internet Interface [eth1]: " INTERNET_INTERFACE
 INTERNET_INTERFACE=${INTERNET_INTERFACE:-eth1}
-
 read -p "Enter CSV Registration Timeout in seconds [300]: " CSV_TIMEOUT
 CSV_TIMEOUT=${CSV_TIMEOUT:-300}
-
 read -p "Enter Email Address to send CSV to [cs@drewlentz.com]: " CSV_EMAIL
 CSV_EMAIL=${CSV_EMAIL:-cs@drewlentz.com}
 
@@ -117,7 +110,6 @@ echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV Email:                $CSV_EMAIL"
 echo ""
-
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
@@ -125,11 +117,9 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # --- Update System & Remove VNC Packages ---
 echo "Updating package lists..."
 apt-get update
-
 echo "Removing RealVNC packages (not needed)..."
 apt-get purge -y realvnc-vnc-server realvnc-vnc-viewer
 apt-get autoremove -y
-
 echo "Upgrading packages..."
 apt-get -y upgrade
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 3: System updated and VNC removed."
@@ -154,10 +144,13 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Configure dnsmasq for DHCP on CP_INTERFACE ---
 echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
+# Using a /21 network (netmask 255.255.248.0) to provide a pool of ~2048 addresses (192.168.4.10 to 192.168.11.254)
+# with a lease time of 15 minutes, and setting DNS servers (primary: 8.8.8.8, secondary: 192.168.4.1)
 grep -q "^interface=${CP_INTERFACE}" /etc/dnsmasq.conf || echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
-grep -q "^dhcp-range=192.168.4.10,192.168.4.250,255.255.255.0,12h" /etc/dnsmasq.conf || echo "dhcp-range=192.168.4.10,192.168.4.250,255.255.255.0,12h" >> /etc/dnsmasq.conf
+grep -q "^dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" /etc/dnsmasq.conf || echo "dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" >> /etc/dnsmasq.conf
+grep -q "^dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" /etc/dnsmasq.conf || echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.11.254, Lease: 15m, DNS: 8.8.8.8 & 192.168.4.1)."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -270,7 +263,7 @@ def splash():
 def admin():
     global splash_header
     msg = ""
-    if request.method == 'POST':
+    if request.method == 'POST' and 'header' in request.form:
         new_header = request.form.get('header')
         if new_header:
             splash_header = new_header
@@ -280,7 +273,7 @@ def admin():
     except Exception:
         df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
     total_registrations = len(df)
-    # (Chart generation code omitted for brevity)
+    # Admin page with a button to revoke all leases.
     return f"""
     <html>
       <head><title>{DEVICE_NAME} - Admin</title></head>
@@ -292,11 +285,36 @@ def admin():
           <input type="submit" value="Update">
         </form>
         <p>Total Registrations: {total_registrations}</p>
+        <form method="post" action="/admin/revoke">
+          <input type="submit" value="Revoke All Leases">
+        </form>
         <h2>Download CSV</h2>
         <a href="/download_csv">Download CSV</a>
       </body>
     </html>
     """
+
+# New endpoint to revoke leases and block client IPs via iptables.
+@app.route('/admin/revoke', methods=['POST'])
+def revoke_leases():
+    leases_file = "/var/lib/misc/dnsmasq.leases"
+    blocked_ips = []
+    try:
+        with open(leases_file, 'r') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3:
+                    ip = parts[2]
+                    blocked_ips.append(ip)
+    except Exception as e:
+        return "Error reading leases file: " + str(e)
+    import subprocess
+    subprocess.call("iptables -L CAPTIVE_BLOCK >/dev/null 2>&1 || iptables -N CAPTIVE_BLOCK", shell=True)
+    subprocess.call("iptables -F CAPTIVE_BLOCK", shell=True)
+    subprocess.call("iptables -C INPUT -j CAPTIVE_BLOCK 2>/dev/null || iptables -I INPUT -j CAPTIVE_BLOCK", shell=True)
+    for ip in blocked_ips:
+        subprocess.call(f"iptables -A CAPTIVE_BLOCK -s {ip} -j DROP", shell=True)
+    return "Revoked privileges for the following IPs: " + ", ".join(blocked_ips)
 
 @app.route('/download_csv')
 def download_csv():
@@ -323,7 +341,7 @@ After=network.target
 [Service]
 Type=simple
 Environment=MPLCONFIGDIR=/tmp/matplotlib
-ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 192.168.4.1 netmask 255.255.255.0 up
+ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 192.168.4.1 netmask 255.255.248.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
@@ -356,4 +374,7 @@ echo "  Captive Portal Interface: $CP_INTERFACE (IP: 192.168.4.1)"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV will be emailed to:    $CSV_EMAIL"
+echo "  DHCP Pool:                192.168.4.10 - 192.168.11.254 (/21)"
+echo "  Lease Time:               15 minutes"
+echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 192.168.4.1 (secondary)"
 echo "-----------------------------------------"
