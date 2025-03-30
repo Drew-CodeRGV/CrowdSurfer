@@ -1,7 +1,7 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.7"
+SCRIPT_VERSION="1.0.8"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # Function: Check for script update from GitHub.
@@ -48,12 +48,12 @@ check_for_update
 #   - Prompts for key settings, including whether to use an attached 1.5" OLED display.
 #   - Verifies and installs required dependencies (and OLED dependencies if selected).
 #   - Removes unwanted VNC packages.
-#   - Writes the captive portal Python code (which now shows "Howzit!" on boot and updates status on the OLED if enabled).
+#   - Writes the captive portal Python code (which displays "Howzit!" on boot and, if enabled, updates status on the OLED).
 #   - Creates a systemd service that starts Howzit automatically at boot.
 #
-# The captive portal is bound to 192.168.4.1 on CP_INTERFACE and uses a /21 network,
-# providing a DHCP pool from 192.168.4.10 to 192.168.11.254 with a 15-minute lease.
-# DHCP clients will be given DNS servers: primary 8.8.8.8 and secondary 192.168.4.1.
+# The captive portal is bound to 192.168.4.1 on CP_INTERFACE with a /24 network,
+# providing a DHCP pool from 192.168.4.10 to 192.168.4.254 with a 15-minute lease.
+# DHCP clients are given DNS servers: primary 8.8.8.8 and secondary 192.168.4.1.
 
 if [ "$EUID" -ne 0 ]; then 
   echo "Please run as root."
@@ -84,19 +84,11 @@ clear
 
 # --- ASCII Art Header (Sub-Zero style) ---
 cat << "EOF"
-  ___    ___   ______   ______  ________   ______   ________  ______   ______  
- / _ \  / _ \ | ___ \  | ___ \ |  ___| \ | ___ \ |  ___| \| ___ \ | ___ \ | ___ \
-/ /_\ \| /_\ \| |_/ /  | |_/ / | |__|  \| |_/ / | |__|  \| |_/ / | |_/ / | |_/ /
-|  _  ||  _  ||    /   |  __/  |  __| . `  __/  |  __| . `  __/  |    /  |    / 
-| | | || | | || |\ \   | |     | |__| |\  |     | |__| |\  |     | |\ \  | |\ \ 
-\_| |_/\_| |_/\_| \_|  \_|     \____/\_| \_|     \____/\_| \_|     \_| \_| \_| \_|
-                                                                                 
-         ___   ___  _   _   _____  _____  ___  
-        / _ \ |   \| | | | |_   _||  ___|/ _ \ 
-       | | | || |\ | | | |   | |  | |_  | | | |
-       | | | || | \| | | |   | |  |  _| | | | |
-       | |_| || |  | | |_|   | |  | |   | |_| |
-        \___/ |_|  |_|\___/  |_|  |_|    \___/ 
+ _                       _ _   _ 
+| |__   _____      _____(_) |_| |
+| '_ \ / _ \ \ /\ / /_  / | __| |
+| | | | (_) \ V  V / / /| | |_|_|
+|_| |_|\___/ \_/\_/ /___|_|\__(_)
 EOF
 
 echo ""
@@ -172,13 +164,12 @@ echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
 # Remove any existing dhcp-range and interface lines to avoid conflicts.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# Append our correct configuration: using a /21 network (255.255.248.0) for addresses 192.168.4.10 to 192.168.11.254, 15m lease,
-# and set DNS servers to 8.8.8.8 and 192.168.4.1.
+# Append our configuration for a /24 network: IP range 192.168.4.10 to 192.168.4.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
-echo "dhcp-range=192.168.4.10,192.168.11.254,255.255.248.0,15m" >> /etc/dnsmasq.conf
+echo "dhcp-range=192.168.4.10,192.168.4.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.11.254, Lease: 15m, DNS: 8.8.8.8 & 192.168.4.1)."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.4.254, Lease: 15m, DNS: 8.8.8.8 & 192.168.4.1)."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -383,7 +374,7 @@ if USE_OLED:
              image = Image.new("RGB", (device.width, device.height))
              draw = ImageDraw.Draw(image)
              draw.text((0,0), "System Ready", fill="white", font=font)
-             draw.text((0,10), f"Leases: {active_leases} / 2048", fill="white", font=font)
+             draw.text((0,10), f"Leases: {active_leases} / 245", fill="white", font=font)
              device.display(image)
              time.sleep(10)
     import threading
@@ -411,7 +402,7 @@ After=network.target
 [Service]
 Type=simple
 Environment=MPLCONFIGDIR=/tmp/matplotlib
-ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 192.168.4.1 netmask 255.255.248.0 up
+ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 192.168.4.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
@@ -444,7 +435,7 @@ echo "  Captive Portal Interface: $CP_INTERFACE (IP: 192.168.4.1)"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV will be emailed to:    $CSV_EMAIL"
-echo "  DHCP Pool:                192.168.4.10 - 192.168.11.254 (/21)"
+echo "  DHCP Pool:                192.168.4.10 - 192.168.4.254 (/24)"
 echo "  Lease Time:               15 minutes"
 echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 192.168.4.1 (secondary)"
 echo "  OLED Display:             $USE_OLED_PY"
