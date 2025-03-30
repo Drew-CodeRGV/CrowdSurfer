@@ -1,7 +1,7 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.0.1"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # Function: Check for script update
@@ -51,6 +51,8 @@ check_for_update
 # It displays an ASCII art header, prompts for key settings, and shows a concise progress status.
 # It then verifies and installs required dependencies, writes the Python captive portal code,
 # and creates a systemd service that starts Howzit automatically at boot.
+#
+# Note: This version removes RealVNC packages to avoid delays, since remote access via VNC is not required.
 
 # Check for root privileges.
 if [ "$EUID" -ne 0 ]; then 
@@ -75,11 +77,19 @@ clear
 
 # --- ASCII Art Header (Sub-Zero style) ---
 cat << "EOF"
- __  __     ______     __     __     ______     __     ______ 
-/\ \_\ \   /\  __ \   /\ \  _ \ \   /\___  \   /\ \   /\__  _\
-\ \  __ \  \ \ \/\ \  \ \ \/ ".\ \  \/_/  /__  \ \ \  \/_/\ \/
- \ \_\ \_\  \ \_____\  \ \__/".~\_\   /\_____\  \ \_\    \ \_\
-  \/_/\/_/   \/_____/   \/_/   \/_/   \/_____/   \/_/     \/_/
+  ___    ___   ______   ______  ________   ______   ________  ______   ______  
+ / _ \  / _ \ | ___ \  | ___ \ |  ___| \ | ___ \ |  ___| \| ___ \ | ___ \ | ___ \
+/ /_\ \| /_\ \| |_/ /  | |_/ / | |__|  \| |_/ / | |__|  \| |_/ / | |_/ / | |_/ /
+|  _  ||  _  ||    /   |  __/  |  __| . `  __/  |  __| . `  __/  |    /  |    / 
+| | | || | | || |\ \   | |     | |__| |\  |     | |__| |\  |     | |\ \  | |\ \ 
+\_| |_/\_| |_/\_| \_|  \_|     \____/\_| \_|     \____/\_| \_|     \_| \_| \_| \_|
+                                                                                 
+         ___   ___  _   _   _____  _____  ___  
+        / _ \ |   \| | | | |_   _||  ___|/ _ \ 
+       | | | || |\ | | | |   | |  | |_  | | | |
+       | | | || | \| | | |   | |  |  _| | | | |
+       | |_| || |  | | |_|   | |  | |   | |_| |
+        \___/ |_|  |_|\___/  |_|  |_|    \___/ 
 EOF
 
 echo ""
@@ -120,10 +130,18 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Update System ---
-echo "Updating package lists and upgrading packages..."
-apt-get update && apt-get -y upgrade
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 3: System updated."
+# --- Update System & Remove VNC Packages ---
+echo "Updating package lists..."
+apt-get update
+
+# Remove VNC packages since remote access via VNC is not needed.
+echo "Removing RealVNC packages..."
+apt-get purge -y realvnc-vnc-server realvnc-vnc-viewer
+apt-get autoremove -y
+
+echo "Upgrading packages..."
+apt-get -y upgrade
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 3: System updated and VNC removed."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
