@@ -1,10 +1,10 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.8"
+SCRIPT_VERSION="1.0.9"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
-# Function: Check for script update from GitHub.
+# --- Function: Check for script update from GitHub ---
 function check_for_update {
     if ! command -v curl >/dev/null 2>&1; then
         echo "curl not found. Installing curl..."
@@ -38,22 +38,16 @@ function check_for_update {
     fi
 }
 
-# Run update check first.
 check_for_update
 
-# --- Main Installation Script Below ---
+# --- Main Installation Script ---
 # This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
-# It:
-#   - Displays an ASCII art header.
-#   - Prompts for key settings, including whether to use an attached 1.5" OLED display.
-#   - Verifies and installs required dependencies (and OLED dependencies if selected).
-#   - Removes unwanted VNC packages.
-#   - Writes the captive portal Python code (which displays "Howzit!" on boot and, if enabled, updates status on the OLED).
-#   - Creates a systemd service that starts Howzit automatically at boot.
+# It sets the captive portal interface (CP_INTERFACE) with a static IP 192.168.4.1/24,
+# configures dnsmasq with a DHCP pool from 192.168.4.10 to 192.168.4.254 with a 15m lease,
+# and adds iptables redirection so that HTTP traffic arriving on CP_INTERFACE is forced to 192.168.4.1.
+# The captive portal (Python/Flask) binds explicitly to 192.168.4.1, and an admin page is provided at /admin.
 #
-# The captive portal is bound to 192.168.4.1 on CP_INTERFACE with a /24 network,
-# providing a DHCP pool from 192.168.4.10 to 192.168.4.254 with a 15-minute lease.
-# DHCP clients are given DNS servers: primary 8.8.8.8 and secondary 192.168.4.1.
+# Optionally, if a 1.5" OLED display is detected, you can choose to use it to show boot/status information.
 
 if [ "$EUID" -ne 0 ]; then 
   echo "Please run as root."
@@ -82,7 +76,7 @@ TOTAL_STEPS=8
 CURRENT_STEP=1
 clear
 
-# --- ASCII Art Header (Sub-Zero style) ---
+# --- Display ASCII Art Header ---
 cat << "EOF"
  _                       _ _   _ 
 | |__   _____      _____(_) |_| |
@@ -164,7 +158,9 @@ echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
 # Remove any existing dhcp-range and interface lines to avoid conflicts.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# Append our configuration for a /24 network: IP range 192.168.4.10 to 192.168.4.254 with a 15m lease.
+# Append our configuration for a /24 network:
+#   Static IP for CP_INTERFACE: 192.168.4.1/24
+#   DHCP pool: 192.168.4.10 to 192.168.4.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=192.168.4.10,192.168.4.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
@@ -175,7 +171,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Write the Captive Portal Python Application ---
 echo "Writing captive portal application to /usr/local/bin/howzit.py..."
-cat << EOF > /usr/local/bin/howzit.py
+cat << 'EOF' > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
 os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'  # Avoid font cache delays.
@@ -190,8 +186,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Use the OLED display if enabled.
-USE_OLED = ${USE_OLED_PY}
+# Use OLED display if enabled.
+USE_OLED = __import__('os').environ.get('USE_OLED', 'False') == 'True'
 
 app = Flask("${DEVICE_NAME}")
 
@@ -297,9 +293,9 @@ def admin():
     total_registrations = len(df)
     return f"""
     <html>
-      <head><title>{DEVICE_NAME} - Admin</title></head>
+      <head><title>${{DEVICE_NAME}} - Admin</title></head>
       <body>
-        <h1>{DEVICE_NAME} Admin Management</h1>
+        <h1>${{DEVICE_NAME}} Admin Management</h1>
         <p>{msg}</p>
         <form method="post">
           Change Splash Header: <input type="text" name="header" value="{splash_header}">
@@ -340,7 +336,7 @@ def revoke_leases():
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
-# If OLED display is enabled, initialize it and start a background thread to update status.
+# OLED display support if enabled.
 if USE_OLED:
     try:
          from luma.core.interface.serial import i2c
@@ -383,7 +379,7 @@ if USE_OLED:
 
 if __name__ == '__main__':
     init_csv()
-    # Bind Flask explicitly to 192.168.4.1 (static IP on CP_INTERFACE)
+    # Bind Flask explicitly to 192.168.4.1
     app.run(host='192.168.4.1', port=80)
 EOF
 
@@ -407,7 +403,6 @@ ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 192.168.4.1:80
-# dnsmasq is managed separately via /etc/dnsmasq.conf.
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
 Restart=always
 User=root
