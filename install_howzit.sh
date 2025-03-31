@@ -1,8 +1,8 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.0.15-ST7735
+# Version: 1.0.16-ST7735
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.0.15-ST7735"
+SCRIPT_VERSION="1.0.16-ST7735"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
@@ -47,24 +47,25 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
-# This script configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
-# Network settings:
-#   - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
-#   - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease) with DNS 8.8.8.8 and 10.69.0.1.
-#   - iptables DNAT rules redirect both HTTP (80) and HTTPS (443) traffic arriving on CP_INTERFACE to 10.69.0.1:80.
-# Captive portal behavior:
-#   - Displays a registration page (capturing an optional "url" parameter for the originally requested URL).
-#   - On registration, checks that the client’s MAC and email combination is unique per session.
-#   - If new, it adds an exemption rule (via iptables) for that MAC for 10 minutes so that the client can access other resources.
-#   - Appends registration details (including date and time) to a CSV.
-#   - Shows an acknowledgment page with a 10-second countdown that then redirects as configured.
-# Admin panel (/admin) allows:
-#   - Changing the splash header.
-#   - Selecting redirect mode: to the original URL, to a fixed URL, or no redirect.
-#   - Revoking all current exemptions.
-# Optionally, if a Waveshare ST7735S LCD is attached and enabled, it displays status messages.
+# Network Settings:
+#   - CP_INTERFACE (default eth0) will be set to static IP 10.69.0.1/24.
+#   - dnsmasq will serve DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease, DNS: 8.8.8.8 and 10.69.0.1).
+#   - iptables DNAT rules will redirect HTTP and HTTPS traffic arriving on CP_INTERFACE to 10.69.0.1:80.
 #
-# IMPORTANT: Remove any conflicting entries in /etc/dnsmasq.conf before running this script.
+# Captive Portal:
+#   - The Flask app displays a registration page and captures an optional originally requested URL.
+#   - Upon registration, the client’s MAC (looked up via “ip neigh” then “arp -n”) is recorded along with email.
+#   - If not previously registered, an exemption rule is added for that MAC for 10 minutes, allowing normal traffic.
+#   - Registration details (with date/time) are saved to a CSV file.
+#   - Acknowledgment page shows a 10-second countdown before redirecting according to admin settings.
+#
+# Admin Panel (/admin):
+#   - Allows changing the splash header.
+#   - Provides options for redirect mode: "original", "fixed" (with a fixed URL), or "none".
+#   - Provides a button to revoke all exemptions.
+#
+# Optional LCD:
+#   - If a Waveshare ST7735S LCD is attached and enabled, it will display a startup message and update status every 10 seconds.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
@@ -214,6 +215,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
+# Retrieve CP_INTERFACE from environment; default to "eth0" if not set.
+CP_INTERFACE = os.environ.get("CP_INTERFACE", "${CP_INTERFACE}")
+
 # Global configuration
 DEVICE_NAME = "${DEVICE_NAME}"
 CSV_TIMEOUT = ${CSV_TIMEOUT}
@@ -231,10 +235,17 @@ last_submission_time = None
 email_timer = None
 splash_header = "Welcome to the event!"
 
-# Dictionary to store registered clients (MAC_email keys)
+# Dictionary for registered clients (key: MAC_email)
 registered_clients = {}
 
 def get_mac(ip):
+    try:
+        output = subprocess.check_output(["ip", "neigh", "show", ip]).decode("utf-8")
+        match = re.search(r"lladdr\s+(([0-9a-f]{2}:){5}[0-9a-f]{2})", output, re.I)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
     try:
         output = subprocess.check_output(["arp", "-n", ip]).decode("utf-8")
         match = re.search(r"(([0-9a-f]{2}:){5}[0-9a-f]{2})", output, re.I)
@@ -325,7 +336,6 @@ def splash():
                        mac if mac else "unknown",
                        reg_date,
                        reg_time])
-        # Decide on redirection:
         if REDIRECT_MODE == "original" and original_url:
             target_url = original_url
         elif REDIRECT_MODE == "fixed" and FIXED_REDIRECT_URL:
@@ -480,7 +490,6 @@ if USE_LCD:
              draw.text((0,0), text, fill="white", font=font)
              lcd.image(image)
              import time; time.sleep(delay)
-         # Display initial message
          lcd_display("Howzit!")
     except Exception as e:
          print("LCD display initialization failed:", e)
@@ -512,9 +521,9 @@ if USE_LCD:
     t = threading.Thread(target=lcd_status_update, daemon=True)
     t.start()
 
+# --- Run the Captive Portal ---
 if __name__ == '__main__':
     init_csv()
-    # Start the captive portal on 10.69.0.1:80
     app.run(host='10.69.0.1', port=80)
 EOF
 
@@ -532,12 +541,13 @@ After=network.target
 
 [Service]
 Type=simple
-Environment=MPLCONFIGDIR=/tmp/matplotlib
+Environment="CP_INTERFACE=${CP_INTERFACE}"
+Environment="MPLCONFIGDIR=/tmp/matplotlib"
 ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-# DNAT rules for both HTTP and HTTPS traffic arriving on CP_INTERFACE
+# DNAT rules for both HTTP and HTTPS on CP_INTERFACE to 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
