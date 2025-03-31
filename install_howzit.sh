@@ -1,40 +1,46 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.10"
+SCRIPT_VERSION="1.0.11"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
+# ANSI color codes for the status bar:
+YELLOW="\033[33m"
+GREEN="\033[32m"
+BLUE="\033[34m"
+RESET="\033[0m"
+
 # --- Function: Check for script update from GitHub ---
-function check_for_update {
+check_for_update() {
     if ! command -v curl >/dev/null 2>&1; then
-        echo "curl not found. Installing curl..."
+        echo -e "${YELLOW}curl not found. Installing curl...${RESET}"
         apt-get update && apt-get install -y curl
     fi
-    echo "Checking for script updates..."
+    echo -e "${BLUE}Checking for script updates...${RESET}"
     REMOTE_SCRIPT=$(curl -fsSL "$REMOTE_URL")
     if [ $? -ne 0 ] || [ -z "$REMOTE_SCRIPT" ]; then
-        echo "Unable to retrieve remote script. Skipping update check."
+        echo -e "${YELLOW}Unable to retrieve remote script. Skipping update check.${RESET}"
         return
     fi
     REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^SCRIPT_VERSION=' | head -n 1 | cut -d'=' -f2 | tr -d '"')
     if [ -z "$REMOTE_VERSION" ]; then
-        echo "Unable to determine remote version. Skipping update."
+        echo -e "${YELLOW}Unable to determine remote version. Skipping update.${RESET}"
         return
     fi
     if [ "$REMOTE_VERSION" != "$SCRIPT_VERSION" ]; then
-        echo "New version available ($REMOTE_VERSION). Updating..."
+        echo -e "${YELLOW}New version available ($REMOTE_VERSION). Updating...${RESET}"
         NEW_SCRIPT="/tmp/install_howzit.sh.new"
         curl -fsSL "$REMOTE_URL" -o "$NEW_SCRIPT"
         if [ $? -eq 0 ]; then
             chmod +x "$NEW_SCRIPT"
-            echo "Update downloaded. Replacing current script and restarting..."
+            echo -e "${YELLOW}Update downloaded. Replacing current script and restarting...${RESET}"
             mv "$NEW_SCRIPT" "$0"
             exec "$0" "$@"
         else
-            echo "Failed to download the new version. Continuing with the current version."
+            echo -e "${YELLOW}Failed to download the new version. Continuing with current version.${RESET}"
         fi
     else
-        echo "Script is up-to-date (version $SCRIPT_VERSION)."
+        echo -e "${GREEN}Script is up-to-date (version $SCRIPT_VERSION).${RESET}"
     fi
 }
 
@@ -42,22 +48,19 @@ check_for_update
 
 # --- Main Installation Script ---
 # This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
-# It:
-#   - Displays an ASCII art header.
-#   - Prompts for key settings (including whether to use an attached 1.5" OLED display).
-#   - Configures eth0 with a static IP of 192.168.4.1/24.
-#   - Configures dnsmasq with a DHCP pool from 192.168.4.10 to 192.168.4.254 (15m lease).
-#   - Adds iptables rules to redirect all HTTP traffic on eth0 to 192.168.4.1:80.
-#   - Writes the captive portal Python/Flask application (which now defines DEVICE_NAME for the admin page).
-#   - Creates a systemd service to auto-start the portal.
+# It uses the 10.69.0.0/24 subnet:
+#   - Sets eth0 (CP_INTERFACE) to static IP 10.69.0.1/24.
+#   - Configures dnsmasq with DHCP pool 10.69.0.10 - 10.69.0.254, 15m lease.
+#   - Adds iptables rules using REDIRECT so that all HTTP (port 80) traffic arriving on CP_INTERFACE is forced to 10.69.0.1:80.
+#   - Writes the captive portal Python (Flask) app (which starts its CSV timer only upon first registration) and an admin page.
+#   - Optionally supports an attached 1.5" OLED for status display.
+#   - Creates a systemd service to autostart the captive portal.
 #
-# Note: The CSV emailing timer is started only when the first registration POST is received.
-#
-# Optionally, if a 1.5" OLED display is attached, you can use it for status output.
+# This version aims to ensure the captive portal intercepts traffic correctly on devices connected to eth0.
 
 if [ "$EUID" -ne 0 ]; then 
-  echo "Please run as root."
-  exit 1
+    echo -e "${YELLOW}Please run as root.${RESET}"
+    exit 1
 fi
 
 # --- Ask if OLED display is to be used ---
@@ -68,13 +71,14 @@ else
     USE_OLED_PY="False"
 fi
 
-# --- Function to update a status bar ---
-function update_status {
+# --- Function: Persistent Colored Status Bar ---
+update_status() {
     local step=$1
     local total=$2
     local message=$3
+    # Save cursor, move to bottom line, print colored message, and restore cursor.
     echo -ne "\033[s\033[999;0H"
-    printf "[%d/%d] %s\033[K\n" "$step" "$total" "$message"
+    printf "${YELLOW}[%d/%d] ${GREEN}%s${RESET}\033[K\n" "$step" "$total" "$message"
     echo -ne "\033[u"
 }
 
@@ -92,7 +96,7 @@ cat << "EOF"
 EOF
 
 echo ""
-echo "Welcome to the Howzit Captive Portal Setup Wizard!"
+echo -e "${GREEN}Welcome to the Howzit Captive Portal Setup Wizard!${RESET}"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 1: Header displayed."
 sleep 0.5
@@ -161,26 +165,23 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Configure dnsmasq for DHCP on CP_INTERFACE ---
 echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
-# Remove any existing dhcp-range and interface lines to avoid conflicts.
+# Clear any conflicting lines.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# Append our configuration for a /24 network:
-#   - Set static IP for CP_INTERFACE: 192.168.4.1/24 (configured via systemd later)
-#   - DHCP pool: 192.168.4.10 to 192.168.4.254 with a 15m lease.
+# For a /24 network, set the pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
-echo "dhcp-range=192.168.4.10,192.168.4.254,15m" >> /etc/dnsmasq.conf
-echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
+echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
+echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.4.254, Lease: 15m)."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 10.69.0.10-10.69.0.254, Lease: 15m)."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Write the Captive Portal Python Application ---
-# Use an unquoted heredoc so that shell variables are expanded.
 cat << EOF > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
-os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'  # Avoid font cache delays.
+os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'
 import time, random, threading, smtplib, csv, io, base64
 from datetime import datetime, date
 from flask import Flask, request, send_file
@@ -218,7 +219,7 @@ def init_csv():
     with open(current_csv_filename, 'w', newline='') as f:
         csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
     last_submission_time = time.time()
-    # Timer is not started until the first registration is appended.
+    # Do not start the timer until the first registration is received.
 
 def append_to_csv(data):
     global last_submission_time, email_timer
@@ -226,7 +227,6 @@ def append_to_csv(data):
         with open(current_csv_filename, 'a', newline='') as f:
             csv.writer(f).writerow(data)
     last_submission_time = time.time()
-    # (Restart the timer on every new registration.)
     if email_timer:
         email_timer.cancel()
     email_timer = threading.Timer(CSV_TIMEOUT, send_csv_via_email)
@@ -251,7 +251,7 @@ def send_csv_via_email():
         print(f"Email sent for {current_csv_filename}")
     except Exception as e:
         print("Error sending email:", e)
-    init_csv()  # Start a new CSV after emailing.
+    init_csv()
 
 @app.route('/', methods=['GET', 'POST'])
 def splash():
@@ -389,8 +389,8 @@ if USE_OLED:
 
 if __name__ == '__main__':
     init_csv()
-    # Bind Flask explicitly to 192.168.4.1 (CP_INTERFACE static IP)
-    app.run(host='192.168.4.1', port=80)
+    # Use REDIRECT rule so that traffic arriving on CP_INTERFACE is redirected to port 80 on this machine.
+    app.run(host='10.69.0.1', port=80)
 EOF
 
 chmod +x /usr/local/bin/howzit.py
@@ -408,13 +408,16 @@ After=network.target
 [Service]
 Type=simple
 Environment=MPLCONFIGDIR=/tmp/matplotlib
-ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 192.168.4.1 netmask 255.255.255.0 up
+ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
+# Use MASQUERADE for outbound traffic
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 192.168.4.1:80
+# Use REDIRECT to force HTTP traffic arriving on CP_INTERFACE to local port 80.
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j REDIRECT --to-ports 80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
 Restart=always
+RestartSec=5
 User=root
 WorkingDirectory=/
 
@@ -434,14 +437,14 @@ systemctl restart howzit.service
 update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
 echo ""
 echo "-----------------------------------------"
-echo "Installation Summary:"
+echo -e "${GREEN}Installation Summary:${RESET}"
 echo "  Device Name:              $DEVICE_NAME"
-echo "  Captive Portal Interface: $CP_INTERFACE (IP: 192.168.4.1)"
+echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV will be emailed to:    $CSV_EMAIL"
-echo "  DHCP Pool:                192.168.4.10 - 192.168.4.254 (/24)"
+echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
 echo "  Lease Time:               15 minutes"
-echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 192.168.4.1 (secondary)"
+echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
 echo "  OLED Display:             $USE_OLED_PY"
 echo "-----------------------------------------"
