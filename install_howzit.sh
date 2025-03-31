@@ -1,10 +1,10 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.12"
+SCRIPT_VERSION="1.0.13"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
-# ANSI color codes for the status bar:
+# ANSI color codes for status messages
 YELLOW="\033[33m"
 GREEN="\033[32m"
 BLUE="\033[34m"
@@ -47,16 +47,19 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
-# This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
+# This script installs and configures the Howzit Captive Portal Service.
 # It uses the 10.69.0.0/24 subnet:
-#   - Sets CP_INTERFACE (default eth0) with static IP 10.69.0.1/24.
-#   - Configures dnsmasq with a DHCP pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
-#   - Adds iptables rules (using DNAT) so that any HTTP traffic on CP_INTERFACE is forced to 10.69.0.1:80.
-#   - Writes a Python/Flask captive portal (with admin page at /admin) whose CSV timer starts only on the first registration.
-#   - Optionally supports a 1.5" OLED for status output.
-#   - Creates a systemd service to autostart the captive portal.
-#
-# Note: The captive portal now intercepts all HTTP requests on eth0 by using a DNAT rule.
+#  - Sets CP_INTERFACE (default eth0) with static IP 10.69.0.1/24.
+#  - Configures dnsmasq with a DHCP pool from 10.69.0.10 to 10.69.0.254 (15m lease).
+#  - Adds iptables rules (using DNAT) so that any TCP traffic on ports 80 and 443 arriving on CP_INTERFACE is redirected to 10.69.0.1:80.
+#  - Writes a Python/Flask captive portal that:
+#      * Displays a splash page with a registration form.
+#      * Captures the originally requested URL (via a query parameter "url").
+#      * When a user registers (POST), shows an acknowledgment page with a 10-second countdown before redirecting the user to the original URL (or a default page).
+#      * Starts the CSV timer only upon the first registration.
+#  - Provides an admin page at /admin to update the splash header and revoke DHCP leases.
+#  - Optionally supports a 1.5" OLED for status output.
+#  - Creates a systemd service to autostart the captive portal.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
@@ -71,7 +74,7 @@ else
     USE_OLED_PY="False"
 fi
 
-# --- Function: Persistent Colored Status Bar ---
+# --- Persistent Colored Status Bar Function ---
 update_status() {
     local step=$1
     local total=$2
@@ -164,7 +167,9 @@ echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
 # Remove any conflicting lines.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# For a /24 network, set DHCP pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
+# For a /24 network, configure:
+#   - Static IP for CP_INTERFACE: 10.69.0.1 (configured later via ifconfig)
+#   - DHCP pool: 10.69.0.10 to 10.69.0.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
@@ -174,7 +179,6 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Write the Captive Portal Python Application ---
-# Unquoted heredoc for variable expansion.
 cat << EOF > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
@@ -216,7 +220,7 @@ def init_csv():
     with open(current_csv_filename, 'w', newline='') as f:
         csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
     last_submission_time = time.time()
-    # Do not start the timer until the first registration is received.
+    # Timer is not started until first registration.
 
 def append_to_csv(data):
     global last_submission_time, email_timer
@@ -252,7 +256,7 @@ def send_csv_via_email():
 
 @app.route('/', methods=['GET', 'POST'])
 def splash():
-    global splash_header
+    original_url = request.args.get('url', '')
     if request.method == 'POST':
         append_to_csv([request.form.get('first_name'),
                        request.form.get('last_name'),
@@ -260,29 +264,56 @@ def splash():
                        request.form.get('zip_code'),
                        request.form.get('email'),
                        request.form.get('gender')])
-        return "Thank you for registering!"
-    return f"""
-    <html>
-      <head><title>{splash_header}</title></head>
-      <body>
-        <h1>{splash_header}</h1>
-        <form method="post">
-          First Name: <input type="text" name="first_name" required><br>
-          Last Name: <input type="text" name="last_name" required><br>
-          Birthday (YYYY-MM-DD): <input type="date" name="birthday" required><br>
-          Zip Code: <input type="text" name="zip_code" required><br>
-          Email: <input type="email" name="email" required><br>
-          Gender: <select name="gender">
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                  </select><br>
-          <input type="submit" value="Register">
-        </form>
-      </body>
-    </html>
-    """
+        # After registration, show a countdown page and then redirect.
+        redirect_url = original_url if original_url else "http://10.69.0.1/admin"
+        return f"""
+        <html>
+          <head>
+            <title>Registration Complete</title>
+            <script>
+              var seconds = 10;
+              function countdown() {{
+                  if(seconds <= 0) {{
+                      window.location = "{redirect_url}";
+                  }} else {{
+                      document.getElementById("countdown").innerHTML = seconds;
+                      seconds--;
+                      setTimeout(countdown, 1000);
+                  }}
+              }}
+              window.onload = countdown;
+            </script>
+          </head>
+          <body>
+            <p>Thank you for registering!</p>
+            <p>Redirecting in <span id="countdown">10</span> seconds...</p>
+          </body>
+        </html>
+        """
+    else:
+        return f"""
+        <html>
+          <head><title>{splash_header}</title></head>
+          <body>
+            <h1>{splash_header}</h1>
+            <form method="post" action="/?url={original_url}">
+              <input type="hidden" name="url" value="{original_url}">
+              First Name: <input type="text" name="first_name" required><br>
+              Last Name: <input type="text" name="last_name" required><br>
+              Birthday (YYYY-MM-DD): <input type="date" name="birthday" required><br>
+              Zip Code: <input type="text" name="zip_code" required><br>
+              Email: <input type="email" name="email" required><br>
+              Gender: <select name="gender">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                      </select><br>
+              <input type="submit" value="Register">
+            </form>
+          </body>
+        </html>
+        """
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -408,8 +439,9 @@ ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-# Use DNAT to force all TCP port 80 traffic arriving on CP_INTERFACE to the captive portal
+# DNAT rules for both HTTP and HTTPS (443) traffic arriving on CP_INTERFACE.
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
 Restart=always
 RestartSec=5
