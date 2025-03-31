@@ -1,8 +1,8 @@
 #!/bin/bash
 # install_howzit.sh
-# SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.13-ST7735"
+# Version 1.0.14
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
+SCRIPT_VERSION="1.0.14"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
@@ -47,16 +47,22 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
-# This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
+# This script installs and configures the Howzit Captive Portal Service.
 # It uses the 10.69.0.0/24 subnet:
-#   - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
-#   - dnsmasq is configured with a DHCP pool from 10.69.0.10 to 10.69.0.254 (15m lease).
-#   - iptables DNAT rules redirect both HTTP (80) and HTTPS (443) traffic arriving on CP_INTERFACE to 10.69.0.1:80.
-#   - The Python/Flask captive portal (with admin page at /admin) displays a splash page and, after registration, a 10-second countdown before redirecting.
-#   - The CSV timer (for emailing registrations) starts only on the first registration.
-#   - Optionally supports a Waveshare ST7735S LCD display for status output.
+#  - Sets CP_INTERFACE (default eth0) with static IP 10.69.0.1/24.
+#  - Configures dnsmasq with a DHCP pool from 10.69.0.10 to 10.69.0.254 (15m lease).
+#  - Adds iptables DNAT rules so that all TCP traffic on ports 80 and 443 arriving on CP_INTERFACE is redirected to 10.69.0.1:80.
+#  - Writes a Python/Flask captive portal app which:
+#       * Displays a registration page that captures an optional originally requested URL (as a query parameter "url").
+#       * When a user registers, it looks up the client’s MAC address (via ARP), checks that the MAC/email combination is not already registered, and then:
+#           - Exempts that client from DNAT for 10 minutes (by inserting iptables rules).
+#           - Starts the CSV timer (which sends the CSV email after inactivity) only on the first registration.
+#           - Shows an acknowledgment page with a 10-second countdown, after which it redirects according to the chosen mode.
+#  - The admin panel (at /admin) allows you to change the splash header, choose the redirect mode (original, fixed, or none) and (if fixed) set a fixed URL, as well as revoke all client exemptions.
+#  - Optionally supports a Waveshare ST7735S LCD display.
 #
-# NOTE: Clear any conflicting entries in /etc/dnsmasq.conf before running.
+# IMPORTANT: Remove any conflicting entries from /etc/dnsmasq.conf before running this script.
+
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
     exit 1
@@ -112,6 +118,22 @@ read -p "Enter CSV Registration Timeout in seconds [300]: " CSV_TIMEOUT
 CSV_TIMEOUT=${CSV_TIMEOUT:-300}
 read -p "Enter Email Address to send CSV to [cs@drewlentz.com]: " CSV_EMAIL
 CSV_EMAIL=${CSV_EMAIL:-cs@drewlentz.com}
+# New: Redirect mode options:
+echo "Select Redirect Mode after registration:"
+echo "  1) Redirect to originally requested URL"
+echo "  2) Redirect to a fixed URL (you will be prompted)"
+echo "  3) No redirect (stay on captive portal)"
+read -p "Enter option number [1]: " REDIRECT_CHOICE
+if [[ -z "$REDIRECT_CHOICE" || "$REDIRECT_CHOICE" == "1" ]]; then
+    REDIRECT_MODE="original"
+    FIXED_REDIRECT_URL=""
+elif [ "$REDIRECT_CHOICE" == "2" ]; then
+    REDIRECT_MODE="fixed"
+    read -p "Enter the fixed URL to redirect to: " FIXED_REDIRECT_URL
+else
+    REDIRECT_MODE="none"
+    FIXED_REDIRECT_URL=""
+fi
 
 echo ""
 echo "Configuration Summary:"
@@ -120,6 +142,10 @@ echo "  Captive Portal Interface: $CP_INTERFACE"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV Email:                $CSV_EMAIL"
+echo "  Redirect Mode:            $REDIRECT_MODE"
+if [ "$REDIRECT_MODE" == "fixed" ]; then
+    echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
+fi
 echo "  Use ST7735 LCD Display:   $USE_LCD"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
@@ -160,11 +186,8 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Configure dnsmasq for DHCP on CP_INTERFACE ---
 echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
-# Remove any conflicting lines.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# For a /24 network:
-#   - CP_INTERFACE (static IP 10.69.0.1/24) provides a DHCP pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
@@ -178,7 +201,7 @@ cat << EOF > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
 os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'
-import time, random, threading, smtplib, csv, io, base64
+import time, random, threading, smtplib, csv, io, base64, subprocess, re
 from datetime import datetime, date
 from flask import Flask, request, send_file, redirect
 from email.mime.text import MIMEText
@@ -192,6 +215,8 @@ import pandas as pd
 # Global configuration
 DEVICE_NAME = "${DEVICE_NAME}"
 CSV_TIMEOUT = ${CSV_TIMEOUT}
+REDIRECT_MODE = "${REDIRECT_MODE}"  # "original", "fixed", or "none"
+FIXED_REDIRECT_URL = "${FIXED_REDIRECT_URL}"
 
 # Use LCD display if enabled.
 USE_LCD = "${USE_LCD}" == "True"
@@ -204,6 +229,38 @@ last_submission_time = None
 email_timer = None
 splash_header = "Welcome to the event!"
 
+# Dictionary to store registered clients: key = MAC_email, value = expiration timestamp.
+registered_clients = {}
+
+def get_mac(ip):
+    try:
+        output = subprocess.check_output(["arp", "-n", ip]).decode("utf-8")
+        match = re.search(r"(([0-9a-f]{2}:){5}[0-9a-f]{2})", output, re.I)
+        if match:
+            return match.group(0)
+    except Exception as e:
+        return None
+    return None
+
+def add_exemption(mac):
+    # Add iptables rules to exempt this MAC from DNAT.
+    subprocess.call(f"iptables -t nat -I PREROUTING -i {os.environ.get('CP_INTERFACE', 'eth0')} -m mac --mac-source {mac} -p tcp --dport 80 -j RETURN", shell=True)
+    subprocess.call(f"iptables -t nat -I PREROUTING -i {os.environ.get('CP_INTERFACE', 'eth0')} -m mac --mac-source {mac} -p tcp --dport 443 -j RETURN", shell=True)
+
+def remove_exemption(mac):
+    # Remove the exemption rules for this MAC.
+    subprocess.call(f"iptables -t nat -D PREROUTING -i {os.environ.get('CP_INTERFACE', 'eth0')} -m mac --mac-source {mac} -p tcp --dport 80 -j RETURN", shell=True)
+    subprocess.call(f"iptables -t nat -D PREROUTING -i {os.environ.get('CP_INTERFACE', 'eth0')} -m mac --mac-source {mac} -p tcp --dport 443 -j RETURN", shell=True)
+
+def schedule_exemption_removal(mac, duration=600):
+    # Remove exemption after 'duration' seconds (10 minutes).
+    def remove_rule():
+        remove_exemption(mac)
+        key = f"{mac}_{registered_clients.get(mac, '')}"
+        registered_clients.pop(key, None)
+    timer = threading.Timer(duration, remove_rule)
+    timer.start()
+
 def generate_csv_filename():
     now = datetime.now()
     rand = random.randint(1000, 9999)
@@ -213,9 +270,8 @@ def init_csv():
     global current_csv_filename, last_submission_time, email_timer
     current_csv_filename = generate_csv_filename()
     with open(current_csv_filename, 'w', newline='') as f:
-        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
+        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC"])
     last_submission_time = time.time()
-    # Do not start timer until first registration.
 
 def append_to_csv(data):
     global last_submission_time, email_timer
@@ -252,24 +308,44 @@ def send_csv_via_email():
 @app.route('/', methods=['GET', 'POST'])
 def splash():
     original_url = request.args.get('url', '')
+    client_ip = request.remote_addr
     if request.method == 'POST':
+        # Lookup MAC address of client
+        mac = get_mac(client_ip)
+        email = request.form.get('email')
+        # Check if this MAC and email combination is already registered
+        key = f"{mac}_{email}"
+        if key in registered_clients:
+            # Already registered, do nothing (or inform the user)
+            pass
+        else:
+            # New registration: add to registered_clients and add iptables exemption
+            registered_clients[key] = time.time() + 600  # valid for 10 minutes
+            if mac:
+                add_exemption(mac)
+                schedule_exemption_removal(mac, duration=600)
         append_to_csv([request.form.get('first_name'),
                        request.form.get('last_name'),
                        request.form.get('birthday'),
                        request.form.get('zip_code'),
-                       request.form.get('email'),
-                       request.form.get('gender')])
-        # After registration, display acknowledgment with 10-second countdown then redirect.
-        redirect_url = original_url if original_url else "http://10.69.0.1/admin"
-        return f"""
-        <html>
-          <head>
-            <title>Registration Complete</title>
+                       email,
+                       mac if mac else "unknown"])
+        # Build the redirect page with countdown
+        if REDIRECT_MODE == "original" and original_url:
+            target_url = original_url
+        elif REDIRECT_MODE == "fixed" and FIXED_REDIRECT_URL:
+            target_url = FIXED_REDIRECT_URL
+        else:
+            target_url = ""
+        # If target_url is empty, then no redirect is performed; show a confirmation message.
+        redirect_script = ""
+        if target_url:
+            redirect_script = f"""
             <script>
               var seconds = 10;
               function countdown() {{
                   if(seconds <= 0) {{
-                      window.location = "{redirect_url}";
+                      window.location = "{target_url}";
                   }} else {{
                       document.getElementById("countdown").innerHTML = seconds;
                       seconds--;
@@ -278,10 +354,18 @@ def splash():
               }}
               window.onload = countdown;
             </script>
+            """
+        else:
+            redirect_script = "<p>No redirect configured.</p>"
+        return f"""
+        <html>
+          <head>
+            <title>Registration Complete</title>
+            {redirect_script}
           </head>
           <body>
             <p>Thank you for registering!</p>
-            <p>Redirecting in <span id="countdown">10</span> seconds...</p>
+            <p>{ 'Redirecting in <span id="countdown">10</span> seconds...' if target_url else '' }</p>
           </body>
         </html>
         """
@@ -312,17 +396,24 @@ def splash():
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    global splash_header
+    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
     msg = ""
-    if request.method == 'POST' and 'header' in request.form:
-        new_header = request.form.get('header')
-        if new_header:
-            splash_header = new_header
-            msg = "Header updated successfully."
+    if request.method == 'POST':
+        if 'header' in request.form:
+            new_header = request.form.get('header')
+            if new_header:
+                splash_header = new_header
+                msg = "Header updated successfully."
+        if 'redirect_mode' in request.form:
+            REDIRECT_MODE = request.form.get('redirect_mode')
+            if REDIRECT_MODE == "fixed":
+                FIXED_REDIRECT_URL = request.form.get('fixed_url', '')
+            else:
+                FIXED_REDIRECT_URL = ""
     try:
         df = pd.read_csv(current_csv_filename)
     except Exception:
-        df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
+        df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC"])
     total_registrations = len(df)
     return f"""
     <html>
@@ -331,8 +422,15 @@ def admin():
         <h1>{DEVICE_NAME} Admin Management</h1>
         <p>{msg}</p>
         <form method="post">
-          Change Splash Header: <input type="text" name="header" value="{splash_header}">
-          <input type="submit" value="Update">
+          Change Splash Header: <input type="text" name="header" value="{splash_header}"><br>
+          Redirect Mode:
+          <select name="redirect_mode">
+            <option value="original" {'selected' if REDIRECT_MODE=='original' else ''}>Original Requested URL</option>
+            <option value="fixed" {'selected' if REDIRECT_MODE=='fixed' else ''}>Fixed URL</option>
+            <option value="none" {'selected' if REDIRECT_MODE=='none' else ''}>No Redirect</option>
+          </select><br>
+          Fixed Redirect URL (if applicable): <input type="text" name="fixed_url" value="{FIXED_REDIRECT_URL}"><br>
+          <input type="submit" value="Update Settings">
         </form>
         <p>Total Registrations: {total_registrations}</p>
         <form method="post" action="/admin/revoke">
@@ -369,13 +467,16 @@ def revoke_leases():
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
+# --- Initialize Redirect Global Variables ---
+REDIRECT_MODE = "original"
+FIXED_REDIRECT_URL = ""
+
 # --- ST7735 LCD Display Support (for Waveshare ST7735S) ---
 if USE_LCD:
     try:
          import board, digitalio
          import adafruit_st7735r
          from PIL import Image, ImageDraw, ImageFont
-         # Configure SPI and pins (adjust as needed)
          spi = board.SPI()
          cs = digitalio.DigitalInOut(board.CE0)
          dc = digitalio.DigitalInOut(board.D24)
@@ -388,7 +489,6 @@ if USE_LCD:
          lcd.image(image)
     except Exception as e:
          print("LCD display initialization failed:", e)
-
     def lcd_status_update():
          import time
          from PIL import Image, ImageDraw, ImageFont
@@ -442,7 +542,8 @@ ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-# DNAT rules for HTTP and HTTPS traffic arriving on CP_INTERFACE are forced to 10.69.0.1:80
+# DNAT rules for both HTTP and HTTPS traffic arriving on CP_INTERFACE are forced to 10.69.0.1:80,
+# unless the client's MAC is exempted.
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
@@ -476,5 +577,9 @@ echo "  CSV will be emailed to:    $CSV_EMAIL"
 echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
 echo "  Lease Time:               15 minutes"
 echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
-echo "  LCD Display (ST7735S):      $USE_LCD"
+echo "  Redirect Mode:            $REDIRECT_MODE"
+if [ "$REDIRECT_MODE" == "fixed" ]; then
+    echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
+fi
+echo "  ST7735 LCD Display:       $USE_LCD"
 echo -e "${GREEN}-----------------------------------------${RESET}"
