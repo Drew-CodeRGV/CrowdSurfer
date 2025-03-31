@@ -1,7 +1,7 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.9"
+SCRIPT_VERSION="1.0.10"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # --- Function: Check for script update from GitHub ---
@@ -42,12 +42,18 @@ check_for_update
 
 # --- Main Installation Script ---
 # This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
-# It sets the captive portal interface (CP_INTERFACE) with a static IP 192.168.4.1/24,
-# configures dnsmasq with a DHCP pool from 192.168.4.10 to 192.168.4.254 with a 15m lease,
-# and adds iptables redirection so that HTTP traffic arriving on CP_INTERFACE is forced to 192.168.4.1.
-# The captive portal (Python/Flask) binds explicitly to 192.168.4.1, and an admin page is provided at /admin.
+# It:
+#   - Displays an ASCII art header.
+#   - Prompts for key settings (including whether to use an attached 1.5" OLED display).
+#   - Configures eth0 with a static IP of 192.168.4.1/24.
+#   - Configures dnsmasq with a DHCP pool from 192.168.4.10 to 192.168.4.254 (15m lease).
+#   - Adds iptables rules to redirect all HTTP traffic on eth0 to 192.168.4.1:80.
+#   - Writes the captive portal Python/Flask application (which now defines DEVICE_NAME for the admin page).
+#   - Creates a systemd service to auto-start the portal.
 #
-# Optionally, if a 1.5" OLED display is detected, you can choose to use it to show boot/status information.
+# Note: The CSV emailing timer is started only when the first registration POST is received.
+#
+# Optionally, if a 1.5" OLED display is attached, you can use it for status output.
 
 if [ "$EUID" -ne 0 ]; then 
   echo "Please run as root."
@@ -159,19 +165,19 @@ echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
 # Append our configuration for a /24 network:
-#   Static IP for CP_INTERFACE: 192.168.4.1/24
-#   DHCP pool: 192.168.4.10 to 192.168.4.254 with a 15m lease.
+#   - Set static IP for CP_INTERFACE: 192.168.4.1/24 (configured via systemd later)
+#   - DHCP pool: 192.168.4.10 to 192.168.4.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=192.168.4.10,192.168.4.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,192.168.4.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.4.254, Lease: 15m, DNS: 8.8.8.8 & 192.168.4.1)."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured (Pool: 192.168.4.10-192.168.4.254, Lease: 15m)."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Write the Captive Portal Python Application ---
-echo "Writing captive portal application to /usr/local/bin/howzit.py..."
-cat << 'EOF' > /usr/local/bin/howzit.py
+# Use an unquoted heredoc so that shell variables are expanded.
+cat << EOF > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
 os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'  # Avoid font cache delays.
@@ -186,10 +192,14 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Use OLED display if enabled.
-USE_OLED = __import__('os').environ.get('USE_OLED', 'False') == 'True'
+# Global configuration
+DEVICE_NAME = "${DEVICE_NAME}"
+CSV_TIMEOUT = ${CSV_TIMEOUT}
 
-app = Flask("${DEVICE_NAME}")
+# Use OLED display if enabled.
+USE_OLED = "${USE_OLED_PY}" == "True"
+
+app = Flask(DEVICE_NAME)
 
 csv_lock = threading.Lock()
 current_csv_filename = None
@@ -208,19 +218,19 @@ def init_csv():
     with open(current_csv_filename, 'w', newline='') as f:
         csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
     last_submission_time = time.time()
-    if email_timer:
-        email_timer.cancel()
+    # Timer is not started until the first registration is appended.
 
 def append_to_csv(data):
     global last_submission_time, email_timer
     with csv_lock:
         with open(current_csv_filename, 'a', newline='') as f:
             csv.writer(f).writerow(data)
-        last_submission_time = time.time()
-        if email_timer:
-            email_timer.cancel()
-        email_timer = threading.Timer(${CSV_TIMEOUT}, send_csv_via_email)
-        email_timer.start()
+    last_submission_time = time.time()
+    # (Restart the timer on every new registration.)
+    if email_timer:
+        email_timer.cancel()
+    email_timer = threading.Timer(CSV_TIMEOUT, send_csv_via_email)
+    email_timer.start()
 
 def send_csv_via_email():
     global current_csv_filename
@@ -241,7 +251,7 @@ def send_csv_via_email():
         print(f"Email sent for {current_csv_filename}")
     except Exception as e:
         print("Error sending email:", e)
-    init_csv()
+    init_csv()  # Start a new CSV after emailing.
 
 @app.route('/', methods=['GET', 'POST'])
 def splash():
@@ -293,9 +303,9 @@ def admin():
     total_registrations = len(df)
     return f"""
     <html>
-      <head><title>${{DEVICE_NAME}} - Admin</title></head>
+      <head><title>{DEVICE_NAME} - Admin</title></head>
       <body>
-        <h1>${{DEVICE_NAME}} Admin Management</h1>
+        <h1>{DEVICE_NAME} Admin Management</h1>
         <p>{msg}</p>
         <form method="post">
           Change Splash Header: <input type="text" name="header" value="{splash_header}">
@@ -336,7 +346,7 @@ def revoke_leases():
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
-# OLED display support if enabled.
+# --- OLED Display Support (Optional) ---
 if USE_OLED:
     try:
          from luma.core.interface.serial import i2c
@@ -379,7 +389,7 @@ if USE_OLED:
 
 if __name__ == '__main__':
     init_csv()
-    # Bind Flask explicitly to 192.168.4.1
+    # Bind Flask explicitly to 192.168.4.1 (CP_INTERFACE static IP)
     app.run(host='192.168.4.1', port=80)
 EOF
 
