@@ -1,7 +1,7 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.13"
+SCRIPT_VERSION="1.0.13-ST7735"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # ANSI color codes for status messages
@@ -47,31 +47,27 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
-# This script installs and configures the Howzit Captive Portal Service.
+# This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
 # It uses the 10.69.0.0/24 subnet:
-#  - Sets CP_INTERFACE (default eth0) with static IP 10.69.0.1/24.
-#  - Configures dnsmasq with a DHCP pool from 10.69.0.10 to 10.69.0.254 (15m lease).
-#  - Adds iptables rules (using DNAT) so that any TCP traffic on ports 80 and 443 arriving on CP_INTERFACE is redirected to 10.69.0.1:80.
-#  - Writes a Python/Flask captive portal that:
-#      * Displays a splash page with a registration form.
-#      * Captures the originally requested URL (via a query parameter "url").
-#      * When a user registers (POST), shows an acknowledgment page with a 10-second countdown before redirecting the user to the original URL (or a default page).
-#      * Starts the CSV timer only upon the first registration.
-#  - Provides an admin page at /admin to update the splash header and revoke DHCP leases.
-#  - Optionally supports a 1.5" OLED for status output.
-#  - Creates a systemd service to autostart the captive portal.
-
+#   - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
+#   - dnsmasq is configured with a DHCP pool from 10.69.0.10 to 10.69.0.254 (15m lease).
+#   - iptables DNAT rules redirect both HTTP (80) and HTTPS (443) traffic arriving on CP_INTERFACE to 10.69.0.1:80.
+#   - The Python/Flask captive portal (with admin page at /admin) displays a splash page and, after registration, a 10-second countdown before redirecting.
+#   - The CSV timer (for emailing registrations) starts only on the first registration.
+#   - Optionally supports a Waveshare ST7735S LCD display for status output.
+#
+# NOTE: Clear any conflicting entries in /etc/dnsmasq.conf before running.
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
     exit 1
 fi
 
-# --- Ask if OLED display is to be used ---
-read -p "Use OLED display to show status? [Y/n]: " USE_OLED_CHOICE
-if [[ -z "$USE_OLED_CHOICE" || "$USE_OLED_CHOICE" =~ ^[Yy] ]]; then
-    USE_OLED_PY="True"
+# --- Ask if ST7735 LCD display is to be used ---
+read -p "Use ST7735 LCD display to show status? [Y/n]: " USE_LCD_CHOICE
+if [[ -z "$USE_LCD_CHOICE" || "$USE_LCD_CHOICE" =~ ^[Yy] ]]; then
+    USE_LCD="True"
 else
-    USE_OLED_PY="False"
+    USE_LCD="False"
 fi
 
 # --- Persistent Colored Status Bar Function ---
@@ -124,7 +120,7 @@ echo "  Captive Portal Interface: $CP_INTERFACE"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
 echo "  CSV Email:                $CSV_EMAIL"
-echo "  Use OLED Display:         $USE_OLED_PY"
+echo "  Use ST7735 LCD Display:   $USE_LCD"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
 sleep 0.5
@@ -154,9 +150,9 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-if [ "$USE_OLED_PY" = "True" ]; then
+if [ "$USE_LCD" = "True" ]; then
     apt-get install -y python3-pip
-    pip3 install luma.oled pillow
+    pip3 install adafruit-circuitpython-st7735r pillow
 fi
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
 sleep 0.5
@@ -167,9 +163,8 @@ echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
 # Remove any conflicting lines.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# For a /24 network, configure:
-#   - Static IP for CP_INTERFACE: 10.69.0.1 (configured later via ifconfig)
-#   - DHCP pool: 10.69.0.10 to 10.69.0.254 with a 15m lease.
+# For a /24 network:
+#   - CP_INTERFACE (static IP 10.69.0.1/24) provides a DHCP pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
@@ -185,7 +180,7 @@ import os
 os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'
 import time, random, threading, smtplib, csv, io, base64
 from datetime import datetime, date
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, redirect
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -198,8 +193,8 @@ import pandas as pd
 DEVICE_NAME = "${DEVICE_NAME}"
 CSV_TIMEOUT = ${CSV_TIMEOUT}
 
-# Use OLED display if enabled.
-USE_OLED = "${USE_OLED_PY}" == "True"
+# Use LCD display if enabled.
+USE_LCD = "${USE_LCD}" == "True"
 
 app = Flask(DEVICE_NAME)
 
@@ -220,7 +215,7 @@ def init_csv():
     with open(current_csv_filename, 'w', newline='') as f:
         csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender"])
     last_submission_time = time.time()
-    # Timer is not started until first registration.
+    # Do not start timer until first registration.
 
 def append_to_csv(data):
     global last_submission_time, email_timer
@@ -264,7 +259,7 @@ def splash():
                        request.form.get('zip_code'),
                        request.form.get('email'),
                        request.form.get('gender')])
-        # After registration, show a countdown page and then redirect.
+        # After registration, display acknowledgment with 10-second countdown then redirect.
         redirect_url = original_url if original_url else "http://10.69.0.1/admin"
         return f"""
         <html>
@@ -374,28 +369,36 @@ def revoke_leases():
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
-# --- OLED Display Support (Optional) ---
-if USE_OLED:
+# --- ST7735 LCD Display Support (for Waveshare ST7735S) ---
+if USE_LCD:
     try:
-         from luma.core.interface.serial import i2c
-         from luma.oled.device import ssd1331
+         import board, digitalio
+         import adafruit_st7735r
          from PIL import Image, ImageDraw, ImageFont
-         serial = i2c(port=1, address=0x3C)
-         device = ssd1331(serial)
+         # Configure SPI and pins (adjust as needed)
+         spi = board.SPI()
+         cs = digitalio.DigitalInOut(board.CE0)
+         dc = digitalio.DigitalInOut(board.D24)
+         rst = digitalio.DigitalInOut(board.D25)
+         lcd = adafruit_st7735r.ST7735R(spi, cs=cs, dc=dc, rst=rst, width=128, height=160)
          font = ImageFont.load_default()
-         image = Image.new("RGB", (device.width, device.height))
+         image = Image.new("RGB", (lcd.width, lcd.height))
          draw = ImageDraw.Draw(image)
          draw.text((0,0), "Howzit!", fill="white", font=font)
-         device.display(image)
+         lcd.image(image)
     except Exception as e:
-         print("OLED display initialization failed:", e)
-    def oled_status_update():
+         print("LCD display initialization failed:", e)
+
+    def lcd_status_update():
          import time
          from PIL import Image, ImageDraw, ImageFont
-         from luma.core.interface.serial import i2c
-         from luma.oled.device import ssd1331
-         serial = i2c(port=1, address=0x3C)
-         device = ssd1331(serial)
+         import board, digitalio
+         import adafruit_st7735r
+         spi = board.SPI()
+         cs = digitalio.DigitalInOut(board.CE0)
+         dc = digitalio.DigitalInOut(board.D24)
+         rst = digitalio.DigitalInOut(board.D25)
+         lcd = adafruit_st7735r.ST7735R(spi, cs=cs, dc=dc, rst=rst, width=128, height=160)
          font = ImageFont.load_default()
          while True:
              try:
@@ -404,14 +407,14 @@ if USE_OLED:
                  active_leases = len(leases)
              except:
                  active_leases = 0
-             image = Image.new("RGB", (device.width, device.height))
+             image = Image.new("RGB", (lcd.width, lcd.height))
              draw = ImageDraw.Draw(image)
              draw.text((0,0), "System Ready", fill="white", font=font)
-             draw.text((0,10), f"Leases: {active_leases} / 245", fill="white", font=font)
-             device.display(image)
+             draw.text((0,10), f"Leases: {active_leases}", fill="white", font=font)
+             lcd.image(image)
              time.sleep(10)
     import threading
-    t = threading.Thread(target=oled_status_update, daemon=True)
+    t = threading.Thread(target=lcd_status_update, daemon=True)
     t.start()
 
 if __name__ == '__main__':
@@ -439,7 +442,7 @@ ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-# DNAT rules for both HTTP and HTTPS (443) traffic arriving on CP_INTERFACE.
+# DNAT rules for HTTP and HTTPS traffic arriving on CP_INTERFACE are forced to 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
@@ -473,5 +476,5 @@ echo "  CSV will be emailed to:    $CSV_EMAIL"
 echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
 echo "  Lease Time:               15 minutes"
 echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
-echo "  OLED Display:             $USE_OLED_PY"
+echo "  LCD Display (ST7735S):      $USE_LCD"
 echo -e "${GREEN}-----------------------------------------${RESET}"
