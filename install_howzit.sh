@@ -1,7 +1,7 @@
 #!/bin/bash
 # install_howzit.sh
 # SCRIPT_VERSION must be updated on each new release.
-SCRIPT_VERSION="1.0.11"
+SCRIPT_VERSION="1.0.12"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 
 # ANSI color codes for the status bar:
@@ -49,14 +49,14 @@ check_for_update
 # --- Main Installation Script ---
 # This script installs and configures the Howzit Captive Portal Service on a fresh Raspberry Pi.
 # It uses the 10.69.0.0/24 subnet:
-#   - Sets eth0 (CP_INTERFACE) to static IP 10.69.0.1/24.
-#   - Configures dnsmasq with DHCP pool 10.69.0.10 - 10.69.0.254, 15m lease.
-#   - Adds iptables rules using REDIRECT so that all HTTP (port 80) traffic arriving on CP_INTERFACE is forced to 10.69.0.1:80.
-#   - Writes the captive portal Python (Flask) app (which starts its CSV timer only upon first registration) and an admin page.
-#   - Optionally supports an attached 1.5" OLED for status display.
+#   - Sets CP_INTERFACE (default eth0) with static IP 10.69.0.1/24.
+#   - Configures dnsmasq with a DHCP pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
+#   - Adds iptables rules (using DNAT) so that any HTTP traffic on CP_INTERFACE is forced to 10.69.0.1:80.
+#   - Writes a Python/Flask captive portal (with admin page at /admin) whose CSV timer starts only on the first registration.
+#   - Optionally supports a 1.5" OLED for status output.
 #   - Creates a systemd service to autostart the captive portal.
 #
-# This version aims to ensure the captive portal intercepts traffic correctly on devices connected to eth0.
+# Note: The captive portal now intercepts all HTTP requests on eth0 by using a DNAT rule.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
@@ -76,7 +76,6 @@ update_status() {
     local step=$1
     local total=$2
     local message=$3
-    # Save cursor, move to bottom line, print colored message, and restore cursor.
     echo -ne "\033[s\033[999;0H"
     printf "${YELLOW}[%d/%d] ${GREEN}%s${RESET}\033[K\n" "$step" "$total" "$message"
     echo -ne "\033[u"
@@ -152,23 +151,20 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-
-# If OLED is enabled, install pip3 and OLED libraries.
 if [ "$USE_OLED_PY" = "True" ]; then
     apt-get install -y python3-pip
     pip3 install luma.oled pillow
 fi
-
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Configure dnsmasq for DHCP on CP_INTERFACE ---
 echo "Configuring dnsmasq for DHCP on interface ${CP_INTERFACE}..."
-# Clear any conflicting lines.
+# Remove any conflicting lines.
 sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
 sed -i '/^interface=/d' /etc/dnsmasq.conf
-# For a /24 network, set the pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
+# For a /24 network, set DHCP pool from 10.69.0.10 to 10.69.0.254 with a 15m lease.
 echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
@@ -178,6 +174,7 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Write the Captive Portal Python Application ---
+# Unquoted heredoc for variable expansion.
 cat << EOF > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
@@ -361,7 +358,6 @@ if USE_OLED:
          device.display(image)
     except Exception as e:
          print("OLED display initialization failed:", e)
-
     def oled_status_update():
          import time
          from PIL import Image, ImageDraw, ImageFont
@@ -389,7 +385,7 @@ if USE_OLED:
 
 if __name__ == '__main__':
     init_csv()
-    # Use REDIRECT rule so that traffic arriving on CP_INTERFACE is redirected to port 80 on this machine.
+    # Bind Flask explicitly to 10.69.0.1
     app.run(host='10.69.0.1', port=80)
 EOF
 
@@ -411,10 +407,9 @@ Environment=MPLCONFIGDIR=/tmp/matplotlib
 ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
-# Use MASQUERADE for outbound traffic
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-# Use REDIRECT to force HTTP traffic arriving on CP_INTERFACE to local port 80.
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j REDIRECT --to-ports 80
+# Use DNAT to force all TCP port 80 traffic arriving on CP_INTERFACE to the captive portal
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
 Restart=always
 RestartSec=5
@@ -436,7 +431,7 @@ systemctl restart howzit.service
 
 update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
 echo ""
-echo "-----------------------------------------"
+echo -e "${GREEN}-----------------------------------------${RESET}"
 echo -e "${GREEN}Installation Summary:${RESET}"
 echo "  Device Name:              $DEVICE_NAME"
 echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
@@ -447,4 +442,4 @@ echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
 echo "  Lease Time:               15 minutes"
 echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
 echo "  OLED Display:             $USE_OLED_PY"
-echo "-----------------------------------------"
+echo -e "${GREEN}-----------------------------------------${RESET}"
