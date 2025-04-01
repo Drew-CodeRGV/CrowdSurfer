@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.3.2
+# Version: 1.3.3
 
 set -e
 
@@ -17,11 +17,11 @@ cat << "EOF"
 
 EOF
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.3.2\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.3.3\033[0m\n"
 
 # --- Check for updates from GitHub ---
 SCRIPT_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-LOCAL_VERSION="1.3.2"
+LOCAL_VERSION="1.3.3"
 
 check_for_update() {
   echo "Checking for updates..."
@@ -270,11 +270,17 @@ EOF
 systemctl restart dnsmasq
 
 # Step 8: iptables forwarding
-echo -e1 > /proc/sys/net/ipv4/ip_forward
-iptables -t nat -F
-iptables -t nat -A POSTROUTING -o $INTERNET_INTERFACE -j MASQUERADE
-iptables -t nat -A PREROUTING -i $CP_INTERFACE -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
-iptables -t nat -A PREROUTING -i $CP_INTERFACE -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Defensive check before applying iptables rules
+if ip link show "$CP_INTERFACE" | grep -q "state UP"; then
+  iptables -t nat -F
+  iptables -t nat -A POSTROUTING -o $INTERNET_INTERFACE -j MASQUERADE
+  iptables -t nat -A PREROUTING -i $CP_INTERFACE -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
+  iptables -t nat -A PREROUTING -i $CP_INTERFACE -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
+else
+  echo "⚠️  Warning: Interface $CP_INTERFACE is not up. Skipping iptables rules."
+fi
 
 # Step 9: Create systemd service
 cat > /etc/systemd/system/howzit.service <<EOF
