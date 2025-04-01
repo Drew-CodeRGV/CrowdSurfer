@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.1.1
+# Version: 1.1.2
 
 # --- ASCII Header ---
 cat << "EOF"
@@ -12,7 +12,7 @@ cat << "EOF"
 |_|  |_|\____/|_.__/|_|_.__/|_|\___|
 EOF
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.1.1\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.1.2\033[0m\n"
 
 # --- Function: Rollback If Already Installed ---
 rollback_if_needed() {
@@ -75,13 +75,16 @@ pip3 install adafruit-circuitpython-st7735r pillow
 update_status $CURRENT_STEP $TOTAL_STEPS "Dependencies installed."
 ((CURRENT_STEP++))
 
-# --- Step 4: Configure dnsmasq ---
-echo "Configuring dnsmasq..."
+# --- Step 4: Assign IP to CP Interface and Configure dnsmasq ---
+echo "Assigning static IP to $CP_INTERFACE and configuring dnsmasq..."
+ip addr flush dev $CP_INTERFACE
+ip addr add 10.69.0.1/24 dev $CP_INTERFACE
+ip link set $CP_INTERFACE up
 echo "interface=$CP_INTERFACE" >> /etc/dnsmasq.conf
 echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
-update_status $CURRENT_STEP $TOTAL_STEPS "dnsmasq configured."
+update_status $CURRENT_STEP $TOTAL_STEPS "Interface configured and dnsmasq restarted."
 ((CURRENT_STEP++))
 
 # --- Step 5: Write Howzit Application ---
