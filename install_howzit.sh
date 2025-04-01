@@ -1,14 +1,34 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.0.19-ST7735
+# Version: 1.0.19-Rollback-ST7735
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.0.19-ST7735"
+SCRIPT_VERSION="1.0.19-Rollback-ST7735"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
 GREEN="\033[32m"
 BLUE="\033[34m"
 RESET="\033[0m"
+
+# Default captive portal interface (if not set by user)
+CP_INTERFACE_DEFAULT="eth0"
+
+# --- Rollback Routine ---
+# If a previous Howzit installation is detected, roll back its changes.
+if [ -f /usr/local/bin/howzit.py ]; then
+    echo -e "${YELLOW}Existing Howzit installation detected. Rolling back changes...${RESET}"
+    systemctl stop howzit.service 2>/dev/null
+    systemctl disable howzit.service 2>/dev/null
+    rm -f /etc/systemd/system/howzit.service
+    rm -f /usr/local/bin/howzit.py
+    # Remove our added lines from /etc/dnsmasq.conf (using default CP_INTERFACE)
+    sed -i "\|^interface=${CP_INTERFACE_DEFAULT}\$|d" /etc/dnsmasq.conf
+    sed -i "\|^dhcp-range=10\.69\.0\.10,10\.69\.0\.254,15m\$|d" /etc/dnsmasq.conf
+    sed -i "\|^dhcp-option=option:dns-server,8\.8\.8\.8,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
+    systemctl restart dnsmasq
+    iptables -t nat -F
+    echo -e "${GREEN}Rollback complete.${RESET}"
+fi
 
 # --- Function: Check for script update from GitHub ---
 check_for_update() {
@@ -48,71 +68,33 @@ check_for_update
 
 # --- Main Installation Script ---
 # This script installs and configures the Howzit Captive Portal Service.
-# Network settings (using 10.69.0.0/24):
-#   - CP_INTERFACE (default eth0) will be set to static IP 10.69.0.1/24.
-#   - dnsmasq will provide DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease, DNS: 8.8.8.8 and 10.69.0.1).
+# It uses the 10.69.0.0/24 subnet:
+#   - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
+#   - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease; DNS: 8.8.8.8 and 10.69.0.1).
 #   - iptables DNAT rules intercept TCP traffic on ports 80 and 443 arriving on CP_INTERFACE and redirect to 10.69.0.1:80.
 #
 # Captive Portal behavior:
-#   - Displays a modern, centered registration form (styled with inline CSS).
+#   - Displays a modern, centered registration form (with inline CSS styling similar to Apple/Google).
 #   - Captures an optional originally requested URL via the "url" query parameter.
-#   - Upon form submission, the client’s MAC (looked up via “ip neigh” then “arp”) and email are checked
-#     to enforce one registration per session. If new, an exemption rule is added (via iptables RETURN)
-#     for 10 minutes so the client can access the Internet via the wlan0 interface.
-#   - Registration details (with date and time) are appended to a CSV file.
-#   - An acknowledgment page displays a 10-second countdown; afterward, if a redirect is configured
-#     (original or fixed), the client is forwarded; otherwise, the client remains allowed access for 10 minutes.
+#   - On form submission, the client's MAC (using "ip neigh" then "arp") and email are checked to ensure one registration per session.
+#   - If new, an exemption rule is added (iptables RETURN rule) for 10 minutes so the client can access the Internet via wlan0.
+#   - Registration details (including date and time) are recorded in a CSV file.
+#   - An acknowledgment page shows a 10-second countdown and then, if configured, redirects according to admin settings.
 #
-# Admin panel (/admin):
-#   - Uses the same modern styling as the registration form.
-#   - Allows changing the splash header.
-#   - Provides options for redirect mode ("original", "fixed" [with fixed URL], or "none").
-#   - Includes a button to revoke all exemptions.
+# Admin panel (/admin) allows:
+#   - Changing the splash header.
+#   - Selecting the redirect mode ("original", "fixed" with a URL, or "none").
+#   - Revoking all exemptions.
 #
-# Optional LCD:
-#   - Minimal support for a Waveshare ST7735S LCD is included.
-#     The code initializes the display and immediately fills it with black (i.e. deactivates it).
+# Optional ST7735S LCD support:
+#   - Minimal support is included: the LCD is initialized and immediately blanked (black screen).
 #
-# IMPORTANT: Clear any conflicting entries in /etc/dnsmasq.conf before running this script.
+# IMPORTANT: Clear any conflicting entries in /etc/dnsmasq.conf before running.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
     exit 1
 fi
-
-# For this version, we remove any interactive prompt for display.
-# We will include minimal support for the ST7735S such that the display is simply blanked (black).
-USE_LCD="True"
-
-# --- Persistent Colored Status Bar Function ---
-update_status() {
-    local step=$1
-    local total=$2
-    local message=$3
-    echo -ne "\033[s\033[999;0H"
-    printf "${YELLOW}[%d/%d] ${GREEN}%s${RESET}\033[K\n" "$step" "$total" "$message"
-    echo -ne "\033[u"
-}
-
-TOTAL_STEPS=8
-CURRENT_STEP=1
-clear
-
-# --- Display ASCII Art Header ---
-cat << "EOF"
- _                       _ _   _ 
-| |__   _____      _____(_) |_| |
-| '_ \ / _ \ \ /\ / /_  / | __| |
-| | | | (_) \ V  V / / /| | |_|_|
-|_| |_|\___/ \_/\_/ /___|_|\__(_)
-EOF
-
-echo ""
-echo -e "${GREEN}Welcome to the Howzit Captive Portal Setup Wizard!${RESET}"
-echo ""
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 1: Header displayed."
-sleep 0.5
-CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Interactive Configuration ---
 echo "Configuration Setup:"
@@ -153,7 +135,6 @@ echo "  Redirect Mode:            $REDIRECT_MODE"
 if [ "$REDIRECT_MODE" == "fixed" ]; then
     echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
 fi
-echo "  ST7735 LCD Display:       $USE_LCD (minimal support)"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
 sleep 0.5
@@ -183,7 +164,7 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-# Install minimal ST7735 support (no interactive choice now)
+# Install minimal ST7735S LCD support (we only want to initialize and blank the display)
 apt-get install -y python3-pip
 pip3 install adafruit-circuitpython-st7735r pillow
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
@@ -218,10 +199,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Global configuration from environment (or defaults)
+# Global configuration from environment or defaults
 DEVICE_NAME = os.environ.get("DEVICE_NAME", "Howzit01")
 CSV_TIMEOUT = int(os.environ.get("CSV_TIMEOUT", "300"))
-REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")  # "original", "fixed", "none"
+REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")
 FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
 CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 
@@ -233,7 +214,7 @@ last_submission_time = None
 email_timer = None
 splash_header = "Welcome to the event!"
 
-# Dictionary for registered clients (key = MAC_email)
+# Dictionary for registered clients (key: MAC_email)
 registered_clients = {}
 
 def get_mac(ip):
@@ -493,7 +474,7 @@ def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
 # --- Minimal ST7735S LCD Support ---
-# We remove all update threads and simply initialize the display and blank it (set to black).
+# Initialize the Waveshare ST7735S LCD and immediately blank the screen (black).
 try:
     import board, digitalio
     import adafruit_st7735r
@@ -503,7 +484,6 @@ try:
     dc = digitalio.DigitalInOut(board.D24)
     rst = digitalio.DigitalInOut(board.D25)
     lcd = adafruit_st7735r.ST7735R(spi, cs=cs, dc=dc, rst=rst, width=128, height=160)
-    # Create a black image
     black_image = Image.new("RGB", (lcd.width, lcd.height), "black")
     lcd.image(black_image)
 except Exception as e:
