@@ -1,8 +1,8 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.0.19-Rollback-ST7735-Optimized
+# Version: 1.0.20-ST7735-Rollback-Optimized
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.0.19-Rollback-ST7735-Optimized"
+SCRIPT_VERSION="1.0.20-ST7735-Rollback-Optimized"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
@@ -10,8 +10,18 @@ GREEN="\033[32m"
 BLUE="\033[34m"
 RESET="\033[0m"
 
-# Default captive portal interface (if not set by user)
-CP_INTERFACE_DEFAULT="eth0"
+# --- ASCII Header ---
+cat << "HEADER"
+ _    _  ____  _     _ _     _      
+| |  | |/ __ \| |   (_) |   | |     
+| |__| | |  | | |__  _| |__ | | ___ 
+|  __  | |  | | '_ \| | '_ \| |/ _ \
+| |  | | |__| | |_) | | |_) | |  __/
+|_|  |_|\____/|_.__/|_|_.__/|_|\___|
+HEADER
+
+echo -e "${GREEN}Howzit Captive Portal Installation Script${RESET}"
+echo ""
 
 # --- Rollback Routine ---
 # If a previous Howzit installation is detected, roll back its changes.
@@ -22,7 +32,7 @@ if [ -f /usr/local/bin/howzit.py ]; then
     rm -f /etc/systemd/system/howzit.service
     rm -f /usr/local/bin/howzit.py
     # Remove our added lines from /etc/dnsmasq.conf (using default CP_INTERFACE)
-    sed -i "\|^interface=${CP_INTERFACE_DEFAULT}\$|d" /etc/dnsmasq.conf
+    sed -i "\|^interface=eth0\$|d" /etc/dnsmasq.conf
     sed -i "\|^dhcp-range=10\.69\.0\.10,10\.69\.0\.254,15m\$|d" /etc/dnsmasq.conf
     sed -i "\|^dhcp-option=option:dns-server,8\.8\.8\.8,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
     systemctl restart dnsmasq
@@ -67,28 +77,24 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
-# This script installs and configures the Howzit Captive Portal Service.
-# Network Settings (using 10.69.0.0/24):
-#   - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
-#   - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease; DNS: 8.8.8.8 and 10.69.0.1).
-#   - iptables DNAT rules intercept TCP traffic on ports 80 and 443 arriving on CP_INTERFACE and redirect it to 10.69.0.1:80.
+# Network Settings (10.69.0.0/24):
+#  - CP_INTERFACE (default eth0) will be set to static IP 10.69.0.1/24.
+#  - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease; DNS: 8.8.8.8 and 10.69.0.1).
+#  - iptables DNAT rules intercept TCP traffic on ports 80 and 443 on CP_INTERFACE and redirect to 10.69.0.1:80.
 #
 # Captive Portal Behavior:
-#   - Displays a modern, centered registration form with inline CSS (rounded fields, clean fonts).
-#   - Captures an optional originally requested URL via the "url" query parameter.
-#   - On form submission, the client’s MAC (obtained via "ip neigh" then "arp") and email are checked to ensure one registration per session.
-#   - If not already registered, an exemption (iptables RETURN rule) is added for 10 minutes so the client can access the Internet (routed via wlan0).
-#   - Registration details (including date and time) are saved to a CSV file.
-#   - An acknowledgment page shows a 10-second countdown and then redirects based on admin settings:
-#         "original" (to the originally requested URL), "fixed" (to a fixed URL), or "none" (no redirect, with 10 minutes access).
+#  - Displays a modern, centered registration form with inline CSS.
+#  - Captures an optional originally requested URL via the "url" query parameter.
+#  - On submission, checks the client's MAC (via "ip neigh"/"arp") and email; if not previously registered, adds an exemption rule (iptables RETURN) for 10 minutes.
+#  - Records registration details (including date/time) to a CSV file.
+#  - Acknowledgment page shows a 10-second countdown and then redirects based on admin settings.
 #
 # Admin Panel (/admin):
-#   - Uses styling matching the registration form.
-#   - Allows changing the splash header and selecting the redirect mode (with fixed URL if applicable).
-#   - Provides a button to revoke all exemptions.
+#  - Uses similar styling to the registration page.
+#  - Allows changing the splash header, selecting redirect mode (original, fixed, or none), and revoking exemptions.
 #
 # Optional Minimal ST7735S LCD Support:
-#   - The LCD is initialized using the Adafruit CircuitPython ST7735R driver and then immediately blanked (black screen).
+#  - The ST7735S is initialized and immediately blanked (black screen).
 #
 # IMPORTANT: Clear any conflicting entries in /etc/dnsmasq.conf before running this script.
 
@@ -165,7 +171,7 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-# Install minimal ST7735S LCD support
+# Install minimal ST7735S support (we want only to initialize and blank the LCD)
 apt-get install -y python3-pip
 pip3 install adafruit-circuitpython-st7735r pillow
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
@@ -475,7 +481,7 @@ def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
 # --- Minimal ST7735S LCD Support ---
-# Initialize the Waveshare ST7735S LCD and blank it (black screen)
+# Initialize the Waveshare ST7735S LCD and blank it (set to a black screen)
 try:
     import board, digitalio
     import adafruit_st7735r
