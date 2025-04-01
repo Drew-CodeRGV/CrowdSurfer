@@ -1,8 +1,8 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.0.16-ST7735
+# Version: 1.0.18-ST7735
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.0.16-ST7735"
+SCRIPT_VERSION="1.0.18-ST7735"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
@@ -47,25 +47,28 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
-# Network Settings:
-#   - CP_INTERFACE (default eth0) will be set to static IP 10.69.0.1/24.
-#   - dnsmasq will serve DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease, DNS: 8.8.8.8 and 10.69.0.1).
-#   - iptables DNAT rules will redirect HTTP and HTTPS traffic arriving on CP_INTERFACE to 10.69.0.1:80.
+# Network settings (using 10.69.0.0/24):
+#  - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
+#  - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease; DNS: 8.8.8.8, 10.69.0.1).
+#  - iptables DNAT rules intercept TCP port 80 and 443 on CP_INTERFACE and redirect to 10.69.0.1:80.
 #
-# Captive Portal:
-#   - The Flask app displays a registration page and captures an optional originally requested URL.
-#   - Upon registration, the client’s MAC (looked up via “ip neigh” then “arp -n”) is recorded along with email.
-#   - If not previously registered, an exemption rule is added for that MAC for 10 minutes, allowing normal traffic.
-#   - Registration details (with date/time) are saved to a CSV file.
-#   - Acknowledgment page shows a 10-second countdown before redirecting according to admin settings.
+# Captive Portal behavior:
+#  - Presents a modern, centered registration form (styled with inline CSS similar to Apple/Google).
+#  - Captures an optional originally requested URL via a “url” query parameter and hidden form field.
+#  - When the form is submitted, the client’s MAC (looked up via “ip neigh” then “arp”) and email are checked
+#    to ensure each combination registers only once per session.
+#  - If new, an exemption is added (via iptables RETURN) for 10 minutes, allowing Internet access via wlan0.
+#  - Registration details (including registration date/time) are appended to a CSV file.
+#  - The acknowledgment page shows a 10-second countdown and then, if configured, redirects the client:
+#         • "original": to the originally requested URL,
+#         • "fixed": to an admin-specified URL,
+#         • "none": no redirect (client retains 10 minutes of access).
 #
-# Admin Panel (/admin):
-#   - Allows changing the splash header.
-#   - Provides options for redirect mode: "original", "fixed" (with a fixed URL), or "none".
-#   - Provides a button to revoke all exemptions.
+# Admin panel (/admin) allows changing the splash header, selecting the redirect mode, and revoking exemptions.
 #
-# Optional LCD:
-#   - If a Waveshare ST7735S LCD is attached and enabled, it will display a startup message and update status every 10 seconds.
+# Optional: If a Waveshare ST7735S LCD is attached and enabled, it will display a startup message and update status.
+#
+# IMPORTANT: Clear conflicting entries in /etc/dnsmasq.conf before running.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
@@ -116,8 +119,8 @@ read -p "Enter Device Name [Howzit01]: " DEVICE_NAME
 DEVICE_NAME=${DEVICE_NAME:-Howzit01}
 read -p "Enter Captive Portal Interface [eth0]: " CP_INTERFACE
 CP_INTERFACE=${CP_INTERFACE:-eth0}
-read -p "Enter Internet Interface [eth1]: " INTERNET_INTERFACE
-INTERNET_INTERFACE=${INTERNET_INTERFACE:-eth1}
+read -p "Enter Internet Interface [wlan0]: " INTERNET_INTERFACE
+INTERNET_INTERFACE=${INTERNET_INTERFACE:-wlan0}
 read -p "Enter CSV Registration Timeout in seconds [300]: " CSV_TIMEOUT
 CSV_TIMEOUT=${CSV_TIMEOUT:-300}
 read -p "Enter Email Address to send CSV to [cs@drewlentz.com]: " CSV_EMAIL
@@ -215,17 +218,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Retrieve CP_INTERFACE from environment; default to "eth0" if not set.
-CP_INTERFACE = os.environ.get("CP_INTERFACE", "${CP_INTERFACE}")
-
-# Global configuration
-DEVICE_NAME = "${DEVICE_NAME}"
-CSV_TIMEOUT = ${CSV_TIMEOUT}
-REDIRECT_MODE = "${REDIRECT_MODE}"  # "original", "fixed", or "none"
-FIXED_REDIRECT_URL = "${FIXED_REDIRECT_URL}"
-
-# Use LCD display if enabled.
-USE_LCD = "${USE_LCD}" == "True"
+# Global configuration (inherited from systemd Environment)
+DEVICE_NAME = os.environ.get("DEVICE_NAME", "Howzit01")
+CSV_TIMEOUT = int(os.environ.get("CSV_TIMEOUT", "300"))
+REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")  # "original", "fixed", "none"
+FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
+CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 
 app = Flask(DEVICE_NAME)
 
@@ -297,7 +295,7 @@ def send_csv_via_email():
     msg = MIMEMultipart()
     msg['Subject'] = "Howzit CSV Submission"
     msg['From'] = "no-reply@example.com"
-    msg['To'] = "${CSV_EMAIL}"
+    msg['To'] = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
     msg.attach(MIMEText("Attached is the CSV file for the session."))
     part = MIMEApplication(content, Name=current_csv_filename)
     part['Content-Disposition'] = f'attachment; filename="{current_csv_filename}"'
@@ -366,6 +364,9 @@ def splash():
           <head>
             <title>Registration Complete</title>
             {redirect_script}
+            <style>
+              body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+            </style>
           </head>
           <body>
             <p>Thank you for registering!</p>
@@ -376,7 +377,16 @@ def splash():
     else:
         return f"""
         <html>
-          <head><title>{splash_header}</title></head>
+          <head>
+            <title>{splash_header}</title>
+            <style>
+              body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+              form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
+              input[type="text"], input[type="email"], input[type="date"], select {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+              input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
+              input[type="submit"]:hover {{ background: #0056b3; }}
+            </style>
+          </head>
           <body>
             <h1>{splash_header}</h1>
             <form method="post" action="/?url={original_url}">
@@ -422,7 +432,17 @@ def admin():
     total_registrations = len(df)
     return f"""
     <html>
-      <head><title>{DEVICE_NAME} - Admin</title></head>
+      <head>
+        <title>{DEVICE_NAME} - Admin</title>
+        <style>
+          body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+          form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
+          input[type="text"] {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+          input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
+          input[type="submit"]:hover {{ background: #0056b3; }}
+          select {{ width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+        </style>
+      </head>
       <body>
         <h1>{DEVICE_NAME} Admin Management</h1>
         <p>{msg}</p>
@@ -521,7 +541,6 @@ if USE_LCD:
     t = threading.Thread(target=lcd_status_update, daemon=True)
     t.start()
 
-# --- Run the Captive Portal ---
 if __name__ == '__main__':
     init_csv()
     app.run(host='10.69.0.1', port=80)
@@ -533,7 +552,6 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Create systemd Service Unit ---
-echo "Creating systemd service unit for Howzit..."
 cat << EOF > /etc/systemd/system/howzit.service
 [Unit]
 Description=Howzit Captive Portal Service on ${DEVICE_NAME}
@@ -542,12 +560,17 @@ After=network.target
 [Service]
 Type=simple
 Environment="CP_INTERFACE=${CP_INTERFACE}"
+Environment="DEVICE_NAME=${DEVICE_NAME}"
+Environment="CSV_TIMEOUT=${CSV_TIMEOUT}"
+Environment="CSV_EMAIL=${CSV_EMAIL}"
+Environment="REDIRECT_MODE=${REDIRECT_MODE}"
+Environment="FIXED_REDIRECT_URL=${FIXED_REDIRECT_URL}"
+Environment="USE_LCD=${USE_LCD}"
 Environment="MPLCONFIGDIR=/tmp/matplotlib"
 ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-# DNAT rules for both HTTP and HTTPS on CP_INTERFACE to 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
@@ -563,7 +586,6 @@ EOF
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 7: systemd service created."
 sleep 0.5
 
-# --- Reload systemd and start the service ---
 echo "Reloading systemd and enabling Howzit service..."
 systemctl daemon-reload
 systemctl enable howzit.service
