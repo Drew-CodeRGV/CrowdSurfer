@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.2.1
+# Version: 1.2.2
 
 set -e
 
@@ -15,12 +15,12 @@ cat << "EOF"
 EOF
 
 echo -e "
-[32mHowzit Captive Portal Installation Script - v1.2.0[0m
+[32mHowzit Captive Portal Installation Script - v1.2.2[0m
 "
 
 # --- Check for updates from GitHub ---
 SCRIPT_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-LOCAL_VERSION="1.1.5"
+LOCAL_VERSION="1.2.2"
 
 check_for_update() {
   echo "Checking for updates..."
@@ -206,7 +206,8 @@ systemctl enable howzit.service
 systemctl start howzit.service
 
 clear
-echo -e "\n[32mHowzit has been installed and started successfully![0m"
-echo -e "[36mVisit the captive portal at: http://10.69.0.1[0m"
-echo -e "[36mAdmin Dashboard: http://10.69.0.1/admin[0m"
-echo -e "[1;32m🎉 Congratulations! You're ready to rock! 🎉[0m"
+echo -e "
+[32mHowzit has been installed and started successfully![0m"
+echo -e "[36mVisit the captive portal at: http://10.69.0.1[0m"
+echo -e "[36mAdmin Dashboard: http://10.69.0.1/admin[0m"
+echo -e "[1;32m🎉 Congratulations! You're ready to rock! 🎉[0m"
