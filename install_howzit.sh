@@ -1,8 +1,8 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.0.18-ST7735
+# Version: 1.0.19-ST7735
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.0.18-ST7735"
+SCRIPT_VERSION="1.0.19-ST7735"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
@@ -47,41 +47,42 @@ check_for_update() {
 check_for_update
 
 # --- Main Installation Script ---
+# This script installs and configures the Howzit Captive Portal Service.
 # Network settings (using 10.69.0.0/24):
-#  - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
-#  - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease; DNS: 8.8.8.8, 10.69.0.1).
-#  - iptables DNAT rules intercept TCP port 80 and 443 on CP_INTERFACE and redirect to 10.69.0.1:80.
+#   - CP_INTERFACE (default eth0) will be set to static IP 10.69.0.1/24.
+#   - dnsmasq will provide DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease, DNS: 8.8.8.8 and 10.69.0.1).
+#   - iptables DNAT rules intercept TCP traffic on ports 80 and 443 arriving on CP_INTERFACE and redirect to 10.69.0.1:80.
 #
 # Captive Portal behavior:
-#  - Presents a modern, centered registration form (styled with inline CSS similar to Apple/Google).
-#  - Captures an optional originally requested URL via a “url” query parameter and hidden form field.
-#  - When the form is submitted, the client’s MAC (looked up via “ip neigh” then “arp”) and email are checked
-#    to ensure each combination registers only once per session.
-#  - If new, an exemption is added (via iptables RETURN) for 10 minutes, allowing Internet access via wlan0.
-#  - Registration details (including registration date/time) are appended to a CSV file.
-#  - The acknowledgment page shows a 10-second countdown and then, if configured, redirects the client:
-#         • "original": to the originally requested URL,
-#         • "fixed": to an admin-specified URL,
-#         • "none": no redirect (client retains 10 minutes of access).
+#   - Displays a modern, centered registration form (styled with inline CSS).
+#   - Captures an optional originally requested URL via the "url" query parameter.
+#   - Upon form submission, the client’s MAC (looked up via “ip neigh” then “arp”) and email are checked
+#     to enforce one registration per session. If new, an exemption rule is added (via iptables RETURN)
+#     for 10 minutes so the client can access the Internet via the wlan0 interface.
+#   - Registration details (with date and time) are appended to a CSV file.
+#   - An acknowledgment page displays a 10-second countdown; afterward, if a redirect is configured
+#     (original or fixed), the client is forwarded; otherwise, the client remains allowed access for 10 minutes.
 #
-# Admin panel (/admin) allows changing the splash header, selecting the redirect mode, and revoking exemptions.
+# Admin panel (/admin):
+#   - Uses the same modern styling as the registration form.
+#   - Allows changing the splash header.
+#   - Provides options for redirect mode ("original", "fixed" [with fixed URL], or "none").
+#   - Includes a button to revoke all exemptions.
 #
-# Optional: If a Waveshare ST7735S LCD is attached and enabled, it will display a startup message and update status.
+# Optional LCD:
+#   - Minimal support for a Waveshare ST7735S LCD is included.
+#     The code initializes the display and immediately fills it with black (i.e. deactivates it).
 #
-# IMPORTANT: Clear conflicting entries in /etc/dnsmasq.conf before running.
+# IMPORTANT: Clear any conflicting entries in /etc/dnsmasq.conf before running this script.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
     exit 1
 fi
 
-# --- Ask if ST7735 LCD display is to be used ---
-read -p "Use ST7735 LCD display to show status? [Y/n]: " USE_LCD_CHOICE
-if [[ -z "$USE_LCD_CHOICE" || "$USE_LCD_CHOICE" =~ ^[Yy] ]]; then
-    USE_LCD="True"
-else
-    USE_LCD="False"
-fi
+# For this version, we remove any interactive prompt for display.
+# We will include minimal support for the ST7735S such that the display is simply blanked (black).
+USE_LCD="True"
 
 # --- Persistent Colored Status Bar Function ---
 update_status() {
@@ -152,7 +153,7 @@ echo "  Redirect Mode:            $REDIRECT_MODE"
 if [ "$REDIRECT_MODE" == "fixed" ]; then
     echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
 fi
-echo "  Use ST7735 LCD Display:   $USE_LCD"
+echo "  ST7735 LCD Display:       $USE_LCD (minimal support)"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Configuration complete."
 sleep 0.5
@@ -182,10 +183,9 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-if [ "$USE_LCD" = "True" ]; then
-    apt-get install -y python3-pip
-    pip3 install adafruit-circuitpython-st7735r pillow
-fi
+# Install minimal ST7735 support (no interactive choice now)
+apt-get install -y python3-pip
+pip3 install adafruit-circuitpython-st7735r pillow
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
@@ -203,7 +203,7 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Write the Captive Portal Python Application ---
-cat << EOF > /usr/local/bin/howzit.py
+cat << 'EOF' > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
 os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'
@@ -218,7 +218,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Global configuration (inherited from systemd Environment)
+# Global configuration from environment (or defaults)
 DEVICE_NAME = os.environ.get("DEVICE_NAME", "Howzit01")
 CSV_TIMEOUT = int(os.environ.get("CSV_TIMEOUT", "300"))
 REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")  # "original", "fixed", "none"
@@ -233,7 +233,7 @@ last_submission_time = None
 email_timer = None
 splash_header = "Welcome to the event!"
 
-# Dictionary for registered clients (key: MAC_email)
+# Dictionary for registered clients (key = MAC_email)
 registered_clients = {}
 
 def get_mac(ip):
@@ -492,54 +492,22 @@ def revoke_leases():
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
-# --- ST7735 LCD Display Support (Simplified for Waveshare ST7735S) ---
-if USE_LCD:
-    try:
-         import board, digitalio
-         import adafruit_st7735r
-         from PIL import Image, ImageDraw, ImageFont
-         spi = board.SPI()
-         cs = digitalio.DigitalInOut(board.CE0)
-         dc = digitalio.DigitalInOut(board.D24)
-         rst = digitalio.DigitalInOut(board.D25)
-         lcd = adafruit_st7735r.ST7735R(spi, cs=cs, dc=dc, rst=rst, width=128, height=160)
-         def lcd_display(text, delay=2):
-             image = Image.new("RGB", (lcd.width, lcd.height))
-             draw = ImageDraw.Draw(image)
-             font = ImageFont.load_default()
-             draw.text((0,0), text, fill="white", font=font)
-             lcd.image(image)
-             import time; time.sleep(delay)
-         lcd_display("Howzit!")
-    except Exception as e:
-         print("LCD display initialization failed:", e)
-    def lcd_status_update():
-         import time
-         from PIL import Image, ImageDraw, ImageFont
-         import board, digitalio
-         import adafruit_st7735r
-         spi = board.SPI()
-         cs = digitalio.DigitalInOut(board.CE0)
-         dc = digitalio.DigitalInOut(board.D24)
-         rst = digitalio.DigitalInOut(board.D25)
-         lcd = adafruit_st7735r.ST7735R(spi, cs=cs, dc=dc, rst=rst, width=128, height=160)
-         font = ImageFont.load_default()
-         while True:
-             try:
-                 with open("/var/lib/misc/dnsmasq.leases", "r") as f:
-                     leases = f.readlines()
-                 active_leases = len(leases)
-             except:
-                 active_leases = 0
-             image = Image.new("RGB", (lcd.width, lcd.height))
-             draw = ImageDraw.Draw(image)
-             draw.text((0,0), "System Ready", fill="white", font=font)
-             draw.text((0,10), f"Leases: {active_leases}", fill="white", font=font)
-             lcd.image(image)
-             time.sleep(10)
-    import threading
-    t = threading.Thread(target=lcd_status_update, daemon=True)
-    t.start()
+# --- Minimal ST7735S LCD Support ---
+# We remove all update threads and simply initialize the display and blank it (set to black).
+try:
+    import board, digitalio
+    import adafruit_st7735r
+    from PIL import Image
+    spi = board.SPI()
+    cs = digitalio.DigitalInOut(board.CE0)
+    dc = digitalio.DigitalInOut(board.D24)
+    rst = digitalio.DigitalInOut(board.D25)
+    lcd = adafruit_st7735r.ST7735R(spi, cs=cs, dc=dc, rst=rst, width=128, height=160)
+    # Create a black image
+    black_image = Image.new("RGB", (lcd.width, lcd.height), "black")
+    lcd.image(black_image)
+except Exception as e:
+    print("ST7735S LCD minimal init failed:", e)
 
 if __name__ == '__main__':
     init_csv()
@@ -607,5 +575,5 @@ echo "  Redirect Mode:            $REDIRECT_MODE"
 if [ "$REDIRECT_MODE" == "fixed" ]; then
     echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
 fi
-echo "  ST7735 LCD Display:       $USE_LCD"
+echo "  ST7735 LCD Display (minimal): $USE_LCD"
 echo -e "${GREEN}-----------------------------------------${RESET}"
