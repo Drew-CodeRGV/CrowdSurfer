@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.3.1
+# Version: 1.3.2
 
 set -e
 
@@ -17,11 +17,11 @@ cat << "EOF"
 
 EOF
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.3.1\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.3.2\033[0m\n"
 
 # --- Check for updates from GitHub ---
 SCRIPT_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-LOCAL_VERSION="1.3.1"
+LOCAL_VERSION="1.3.2"
 
 check_for_update() {
   echo "Checking for updates..."
@@ -277,25 +277,26 @@ iptables -t nat -A PREROUTING -i $CP_INTERFACE -p tcp --dport 80 -j DNAT --to-de
 iptables -t nat -A PREROUTING -i $CP_INTERFACE -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 
 # Step 9: Create systemd service
-cat << EOF > /etc/systemd/system/howzit.service
+cat > /etc/systemd/system/howzit.service <<EOF
 [Unit]
 Description=Howzit Captive Portal
 After=network.target
 
 [Service]
-ExecStartPre=/bin/bash -c '
-echo -e"[Howzit] Waiting for $CP_INTERFACE to come up and get IP 10.69.0.1..."
+ExecStartPre=/bin/bash -c \
+'echo "[Howzit] Waiting for ${CP_INTERFACE} to come up..."
 while true; do
-  if ip addr show $CP_INTERFACE | grep -q "inet 10.69.0.1"; then
-    echo -e"[Howzit] $CP_INTERFACE is up and has 10.69.0.1. Proceeding."
+  if ip addr show ${CP_INTERFACE} | grep -q "inet 10.69.0.1"; then
+    echo "[Howzit] ${CP_INTERFACE} is ready. Proceeding."
     break
   fi
-  echo -e"[Howzit] $CP_INTERFACE not ready. Retrying in 5 seconds..."
-  ip link set $CP_INTERFACE up
-  ip addr flush dev $CP_INTERFACE
-  ip addr add 10.69.0.1/24 dev $CP_INTERFACE
+  ip link set ${CP_INTERFACE} up
+  ip addr flush dev ${CP_INTERFACE}
+  ip addr add 10.69.0.1/24 dev ${CP_INTERFACE}
+  echo "[Howzit] Still waiting... retrying in 5 seconds."
   sleep 5
 done'
+
 ExecStart=/opt/howzit-env/bin/python /usr/local/bin/howzit.py
 Restart=always
 User=root
