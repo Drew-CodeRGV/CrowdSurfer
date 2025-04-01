@@ -1,8 +1,8 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.0.19-Rollback-ST7735
+# Version: 1.0.19-Rollback-ST7735-Optimized
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.0.19-Rollback-ST7735"
+SCRIPT_VERSION="1.0.19-Rollback-ST7735-Optimized"
 
 # ANSI color codes for status messages
 YELLOW="\033[33m"
@@ -68,28 +68,29 @@ check_for_update
 
 # --- Main Installation Script ---
 # This script installs and configures the Howzit Captive Portal Service.
-# It uses the 10.69.0.0/24 subnet:
+# Network Settings (using 10.69.0.0/24):
 #   - CP_INTERFACE (default eth0) is set to static IP 10.69.0.1/24.
 #   - dnsmasq provides DHCP leases from 10.69.0.10 to 10.69.0.254 (15m lease; DNS: 8.8.8.8 and 10.69.0.1).
-#   - iptables DNAT rules intercept TCP traffic on ports 80 and 443 arriving on CP_INTERFACE and redirect to 10.69.0.1:80.
+#   - iptables DNAT rules intercept TCP traffic on ports 80 and 443 arriving on CP_INTERFACE and redirect it to 10.69.0.1:80.
 #
-# Captive Portal behavior:
-#   - Displays a modern, centered registration form (with inline CSS styling similar to Apple/Google).
+# Captive Portal Behavior:
+#   - Displays a modern, centered registration form with inline CSS (rounded fields, clean fonts).
 #   - Captures an optional originally requested URL via the "url" query parameter.
-#   - On form submission, the client's MAC (using "ip neigh" then "arp") and email are checked to ensure one registration per session.
-#   - If new, an exemption rule is added (iptables RETURN rule) for 10 minutes so the client can access the Internet via wlan0.
-#   - Registration details (including date and time) are recorded in a CSV file.
-#   - An acknowledgment page shows a 10-second countdown and then, if configured, redirects according to admin settings.
+#   - On form submission, the client’s MAC (obtained via "ip neigh" then "arp") and email are checked to ensure one registration per session.
+#   - If not already registered, an exemption (iptables RETURN rule) is added for 10 minutes so the client can access the Internet (routed via wlan0).
+#   - Registration details (including date and time) are saved to a CSV file.
+#   - An acknowledgment page shows a 10-second countdown and then redirects based on admin settings:
+#         "original" (to the originally requested URL), "fixed" (to a fixed URL), or "none" (no redirect, with 10 minutes access).
 #
-# Admin panel (/admin) allows:
-#   - Changing the splash header.
-#   - Selecting the redirect mode ("original", "fixed" with a URL, or "none").
-#   - Revoking all exemptions.
+# Admin Panel (/admin):
+#   - Uses styling matching the registration form.
+#   - Allows changing the splash header and selecting the redirect mode (with fixed URL if applicable).
+#   - Provides a button to revoke all exemptions.
 #
-# Optional ST7735S LCD support:
-#   - Minimal support is included: the LCD is initialized and immediately blanked (black screen).
+# Optional Minimal ST7735S LCD Support:
+#   - The LCD is initialized using the Adafruit CircuitPython ST7735R driver and then immediately blanked (black screen).
 #
-# IMPORTANT: Clear any conflicting entries in /etc/dnsmasq.conf before running.
+# IMPORTANT: Clear any conflicting entries in /etc/dnsmasq.conf before running this script.
 
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}Please run as root.${RESET}"
@@ -164,7 +165,7 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-# Install minimal ST7735S LCD support (we only want to initialize and blank the display)
+# Install minimal ST7735S LCD support
 apt-get install -y python3-pip
 pip3 install adafruit-circuitpython-st7735r pillow
 update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
@@ -202,7 +203,7 @@ import pandas as pd
 # Global configuration from environment or defaults
 DEVICE_NAME = os.environ.get("DEVICE_NAME", "Howzit01")
 CSV_TIMEOUT = int(os.environ.get("CSV_TIMEOUT", "300"))
-REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")
+REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")  # "original", "fixed", or "none"
 FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
 CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 
@@ -474,7 +475,7 @@ def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
 # --- Minimal ST7735S LCD Support ---
-# Initialize the Waveshare ST7735S LCD and immediately blank the screen (black).
+# Initialize the Waveshare ST7735S LCD and blank it (black screen)
 try:
     import board, digitalio
     import adafruit_st7735r
