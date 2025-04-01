@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.2.7
+# Version: 1.2.9
 
 set -e
 
@@ -17,11 +17,11 @@ cat << "EOF"
 
 EOF
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.2.7\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.2.9\033[0m\n"
 
 # --- Check for updates from GitHub ---
 SCRIPT_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-LOCAL_VERSION="1.2.7"
+LOCAL_VERSION="1.2.9"
 
 check_for_update() {
   echo "Checking for updates..."
@@ -36,10 +36,19 @@ check_for_update() {
   echo "Remote version: $remote_version | Local version: $LOCAL_VERSION"
 
   if [[ "$remote_version" > "$LOCAL_VERSION" ]]; then
-    echo -e "[33mA newer version ($remote_version) is available. Updating...[0m"
-    echo "$remote_script" > "$0"
-    chmod +x "$0"
-    exec "$0" "$@"
+    echo -e "[33mA newer version ($remote_version) is available.[0m"
+    echo "1) Update to newer version ($remote_version)"
+    echo "2) Keep current version ($LOCAL_VERSION)"
+    read -p "Choose an option [1]: " choice
+    choice=${choice:-1}
+    if [[ "$choice" == "1" ]]; then
+      echo "Downloading and launching updated version..."
+      echo "$remote_script" > "$0"
+      chmod +x "$0"
+      exec "$0" "$@"
+    else
+      echo "Continuing with current version..."
+    fi
   else
     echo "Up-to-date. Proceeding with installation."
   fi
