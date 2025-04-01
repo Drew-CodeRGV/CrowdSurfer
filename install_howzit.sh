@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.3.0
+# Version: 1.3.1
 
 set -e
 
@@ -13,14 +13,15 @@ cat << "EOF"
 ██   ██ ██    ██ ██ ███ ██  ███    ██    ██    
 ██   ██  ██████   ███ ███  ███████ ██    ██    
                                                
-                                       
+                                               
+
 EOF
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.3.0\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.3.1\033[0m\n"
 
 # --- Check for updates from GitHub ---
 SCRIPT_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-LOCAL_VERSION="1.3.0"
+LOCAL_VERSION="1.3.1"
 
 check_for_update() {
   echo "Checking for updates..."
@@ -48,10 +49,6 @@ check_for_update() {
     fi
   else
     echo "Up-to-date. Proceeding with installation."
-  fi
-}
-  else
-    echo -e"Up-to-date. Proceeding with installation."
   fi
 }
 
