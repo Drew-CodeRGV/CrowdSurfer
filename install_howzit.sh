@@ -4,15 +4,36 @@
 
 # --- ASCII Header ---
 cat << "EOF"
- _    _  ____  _     _ _     _      
-| |  | |/ __ \| |   (_) |   | |     
-| |__| | |  | | |__  _| |__ | | ___ 
-|  __  | |  | | '_ \| | '_ \| |/ _ \
-| |  | | |__| | |_) | | |_) | |  __/
-|_|  |_|\____/|_.__/|_|_.__/|_|\___|
+ _   _  _____        __________ _____ _ 
+| | | |/ _ \ \      / /__  /_ _|_   _| |
+| |_| | | | \ \ /\ / /  / / | |  | | | |
+|  _  | |_| |\ V  V /  / /_ | |  | | |_|
+|_| |_|\___/  \_/\_/  /____|___| |_| (_)
 EOF
 
 echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.1.2\033[0m\n"
+
+# --- GitHub Script Version Check ---
+REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
+SCRIPT_VERSION="1.1.2"
+check_for_update() {
+  echo "Checking for script updates from GitHub..."
+  if ! command -v curl >/dev/null 2>&1; then
+    apt-get update && apt-get install -y curl
+  fi
+  REMOTE_SCRIPT=$(curl -fsSL "$REMOTE_URL")
+  REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^# Version:' | head -n 1 | awk '{print $3}')
+  if [[ "$REMOTE_VERSION" != "$SCRIPT_VERSION" && ! -z "$REMOTE_VERSION" ]]; then
+    echo "\033[33mNew version ($REMOTE_VERSION) available. Updating...\033[0m"
+    echo "$REMOTE_SCRIPT" > "$0"
+    chmod +x "$0"
+    exec "$0" "$@"
+  else
+    echo "\033[32mScript is up-to-date.\033[0m"
+  fi
+}
+
+check_for_update "$@"
 
 # --- Function: Rollback If Already Installed ---
 rollback_if_needed() {
