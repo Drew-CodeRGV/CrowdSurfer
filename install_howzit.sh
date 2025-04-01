@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.1.4
+# Version: 1.1.5
 
 set -e
 
@@ -14,7 +14,42 @@ cat << "EOF"
 |_|  |_|\____/|_.__/|_|_.__/|_|\___|
 EOF
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.1.4\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - v1.1.5\033[0m\n"
+
+# --- Check for updates from GitHub ---
+SCRIPT_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
+LOCAL_VERSION="1.1.5"
+
+check_for_update() {
+  echo "Checking for updates..."
+  remote_script=$(curl -fsSL "$SCRIPT_URL" || true)
+  remote_version=$(echo "$remote_script" | grep '^# Version:' | awk '{print $3}')
+  if [[ "$remote_version" > "$LOCAL_VERSION" ]]; then
+    echo -e "\033[33mA newer version ($remote_version) is available. Updating...\033[0m"
+    echo "$remote_script" > "$0"
+    chmod +x "$0"
+    exec "$0" "$@"
+  else
+    echo "Up-to-date. Proceeding with installation."
+  fi
+}
+
+check_for_update "$@"
+
+# --- Rollback if previously installed ---
+if systemctl is-active --quiet howzit.service; then
+  echo -e "\n\033[33mExisting Howzit installation found. Rolling back...\033[0m"
+  systemctl stop howzit.service || true
+  systemctl disable howzit.service || true
+  rm -f /etc/systemd/system/howzit.service
+  rm -f /usr/local/bin/howzit.py
+  rm -rf /var/www/howzit
+  sed -i '/^interface=.*$/d' /etc/dnsmasq.conf || true
+  sed -i '/^dhcp-range=.*$/d' /etc/dnsmasq.conf || true
+  sed -i '/^dhcp-option=.*$/d' /etc/dnsmasq.conf || true
+  iptables -t nat -F
+  echo -e "\033[32mRollback complete.\033[0m"
+fi
 
 # Step 1: Set default values
 DEVICE_NAME="Howzit01"
@@ -57,6 +92,7 @@ mkdir -p /var/www/howzit/data
 
 # Step 5: Write howzit.py
 cat << 'EOF' > /usr/local/bin/howzit.py
+cat << 'EOF' > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 from flask import Flask, request, render_template_string, redirect, send_from_directory
 from datetime import datetime
@@ -85,24 +121,37 @@ email_target = os.environ.get("HOWZIT_EMAIL", "cs@drewlentz.com")
 HTML_SPLASH = '''
 <html><head><title>Howzit Portal</title>
 <style>
-body { font-family: sans-serif; background: #f0f2f5; text-align: center; margin-top: 40px; }
-form { background: white; padding: 20px; margin: auto; border-radius: 12px; width: 300px; box-shadow: 0 0 8px rgba(0,0,0,0.1); }
-input { width: 90%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc; }
-button { background: #007aff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
-</style></head><body>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; margin: 0; padding: 40px; }
+.container { max-width: 400px; margin: auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+input, button { width: 100%; padding: 12px; margin-top: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; }
+button { background: #007aff; color: white; border: none; cursor: pointer; font-weight: 600; }
+button:hover { background: #0051c7; }
+img { max-width: 100%; border-radius: 12px; margin-bottom: 20px; }
+h1 { margin-bottom: 24px; }
+</style>
+</head><body>
+<div class="container">
 <h1>Welcome to the event!</h1>
+{% if image_url %}<img src="{{ image_url }}" />{% endif %}
 <form action="/register" method="post">
-<input name="first" placeholder="First Name" required><br>
-<input name="last" placeholder="Last Name" required><br>
-<input name="dob" placeholder="Birthday (MM/DD/YYYY)" required><br>
-<input name="zip" placeholder="ZIP Code" required><br>
-<input name="email" placeholder="Email Address" required><br>
+<input name="first" placeholder="First Name" required>
+<input name="last" placeholder="Last Name" required>
+<input name="dob" placeholder="Birthday (MM/DD/YYYY)" required>
+<input name="zip" placeholder="ZIP Code" required>
+<input name="email" placeholder="Email Address" required>
 <button type="submit">Register</button>
-</form></body></html>'''
+</form></div></body></html>'''
 
 HTML_THANKYOU = '''
-<html><head><title>Registered</title><style>body { text-align: center; font-family: sans-serif; margin-top: 60px; }</style></head>
-<body><h2>Thank you for registering!</h2>
+<html><head><title>Registered</title>
+<style>
+body { text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9f9f9; padding-top: 80px; }
+h2 { font-size: 28px; margin-bottom: 20px; }
+p { font-size: 18px; }
+</style>
+</head>
+<body>
+<h2>Thank you for registering!</h2>
 <p>You’ll be redirected in <span id="countdown">10</span> seconds...</p>
 <script>
 var seconds = 10;
@@ -115,12 +164,22 @@ setInterval(function() {
 </body></html>'''
 
 HTML_CLOSE = '''
-<html><head><title>Complete</title></head><body style="text-align:center;font-family:sans-serif;margin-top:60px;">
-<p>Ok, good luck!</p><script>setTimeout(()=>{window.close()},2000)</script></body></html>'''
+<html><head><title>Complete</title>
+<style>body { text-align:center; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin-top:100px; font-size:24px; }</style>
+</head><body>
+<p>Ok, good luck!</p>
+<script>setTimeout(()=>{window.close()},2000)</script>
+</body></html>'''
 
 @app.route("/")
 def index():
-    return render_template_string(HTML_SPLASH)
+    files = os.listdir(upload_folder)
+    image_url = next((f"/uploads/{f}" for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))), None)
+    return render_template_string(HTML_SPLASH, image_url=image_url)
+
+@app.route("/uploads/<filename>")
+def uploads(filename):
+    return send_from_directory(upload_folder, filename)
 
 def send_csv_email(filepath):
     msg = MIMEMultipart()
@@ -151,6 +210,7 @@ def save_csv():
         writer.writeheader()
         writer.writerows(entries)
     entries = []
+    print(f"[Howzit] Saved CSV: {csv_filename}")
     send_csv_email(path)
 
 @app.route("/register", methods=["POST"])
@@ -179,6 +239,7 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
 EOF
 
+EOF
 chmod +x /usr/local/bin/howzit.py
 
 # Step 6: Configure network interface
