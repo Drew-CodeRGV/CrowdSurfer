@@ -92,7 +92,6 @@ mkdir -p /var/www/howzit/data
 
 # Step 5: Write howzit.py
 cat << 'EOF' > /usr/local/bin/howzit.py
-cat << 'EOF' > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 from flask import Flask, request, render_template_string, redirect, send_from_directory
 from datetime import datetime
@@ -239,7 +238,6 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
 EOF
 
-EOF
 chmod +x /usr/local/bin/howzit.py
 
 # Step 6: Configure network interface
