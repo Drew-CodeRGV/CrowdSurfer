@@ -34,7 +34,7 @@ update_status() {
 TOTAL_STEPS=6
 CURRENT_STEP=1
 
-# --- Check for Script Updates (optional) ---
+# --- Check for Script Updates ---
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 SCRIPT_VERSION="1.5.2"
 check_for_update() {
@@ -44,7 +44,23 @@ check_for_update() {
   REMOTE_SCRIPT=$(curl -fsSL "$REMOTE_URL")
   REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^SCRIPT_VERSION=' | head -n 1 | cut -d'=' -f2 | tr -d '"')
   if [ -n "$REMOTE_VERSION" ] && [ "$REMOTE_VERSION" != "$SCRIPT_VERSION" ]; then
-    echo "New version available ($REMOTE_VERSION). Please update manually."
+    echo "New version available: $REMOTE_VERSION (current: $SCRIPT_VERSION)"
+    read -p "Do you want to download and install the new version automatically? (y/n) [y]: " update_choice
+    update_choice=${update_choice:-y}
+    if [ "$update_choice" = "y" ] || [ "$update_choice" = "Y" ]; then
+      NEW_SCRIPT="/tmp/install_howzit.sh.new"
+      curl -fsSL "$REMOTE_URL" -o "$NEW_SCRIPT"
+      if [ $? -eq 0 ]; then
+         chmod +x "$NEW_SCRIPT"
+         echo "New version downloaded. Restarting script..."
+         mv "$NEW_SCRIPT" "$0"
+         exec "$0" "$@"
+      else
+         echo "Failed to download new version. Continuing with current install."
+      fi
+    else
+      echo "Continuing with current install."
+    fi
   fi
 }
 check_for_update
@@ -395,8 +411,17 @@ def revoke_leases():
         if not line.strip():
           continue
         parts = line.split()
-        if len(parts) >= 3:
+        if [ "${#parts[@]}" -ge 3 ]; then
           blocked_ips.append(parts[2])
+        elif [ "${#parts[@]}" -ge 3 ]; then
+          blocked_ips.append(parts[2])
+        fi
+        if [ ${#parts[@]} -ge 3 ]; then
+          blocked_ips.append(parts[2])
+        fi
+        if [ $(echo "$line" | awk '{print NF}') -ge 3 ]; then
+          blocked_ips.append($(echo "$line" | awk '{print $3}'))
+        fi
   except Exception as e:
     return "Error reading leases file: " + str(e)
   import subprocess
