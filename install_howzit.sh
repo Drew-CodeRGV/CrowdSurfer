@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.5.7
+# Version: 1.5.8
 
 # --- ASCII Header (from previous versions) ---
 ascii_header=" _                       _ _   _ 
@@ -9,7 +9,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.5.7\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.5.8\033[0m\n"
 
 # --- Utility: Print section headers (bold cyan) ---
 print_section_header() {
@@ -54,7 +54,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # --- Section: Script Update Check ---
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.5.7"
+SCRIPT_VERSION="1.5.8"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -134,7 +134,6 @@ print_section_header "Set System Hostname"
 NEW_HOSTNAME="${DEVICE_NAME}.cswifi.com"
 echo "Setting hostname to ${NEW_HOSTNAME}"
 hostnamectl set-hostname "${NEW_HOSTNAME}"
-# Update /etc/hosts automatically
 update_hosts() {
   local new_hostname="$1"
   local short_hostname
@@ -191,8 +190,8 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 
 # --- Section: Write Captive Portal Python Application ---
 print_section_header "Write Captive Portal Application"
-# Store the Python application code in a variable (this version adds a function to update /etc/hosts in Python)
-python_content='#!/usr/bin/env python3
+cat > /usr/local/bin/howzit.py << 'EOF'
+#!/usr/bin/env python3
 import os
 os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
 import time, random, threading, smtplib, csv, subprocess, re
@@ -228,15 +227,12 @@ def update_hosts_file(new_hostname):
         entry = f"127.0.0.1   {new_hostname} {short_hostname}\n"
         with open("/etc/hosts", "r") as f:
             hosts = f.readlines()
-        found = any(new_hostname in line for line in hosts)
-        if not found:
+        if not any(new_hostname in line for line in hosts):
             with open("/etc/hosts", "a") as f:
                 f.write(entry)
             print(f"/etc/hosts updated with: {entry.strip()}")
-        return True
     except Exception as e:
         print("Error updating /etc/hosts:", e)
-        return False
 
 def get_mac(ip):
     try:
@@ -412,10 +408,10 @@ def splash():
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
+    import socket
+    current_hostname = socket.gethostname()
     global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
     msg = ""
-    # Get current hostname
-    current_hostname = socket.gethostname()
     if request.method == "POST":
         if "hostname" in request.form:
             new_hostname = request.form.get("hostname")
@@ -480,6 +476,19 @@ def admin():
 </html>
 """
 
+def update_hosts_file(new_hostname):
+    try:
+        short_hostname = new_hostname.split(".")[0]
+        entry = f"127.0.0.1   {new_hostname} {short_hostname}\n"
+        with open("/etc/hosts", "r") as f:
+            hosts = f.readlines()
+        if not any(new_hostname in line for line in hosts):
+            with open("/etc/hosts", "a") as f:
+                f.write(entry)
+            print(f"/etc/hosts updated with: {entry.strip()}")
+    except Exception as e:
+        print("Error updating /etc/hosts:", e)
+
 @app.route("/admin/revoke", methods=["POST"])
 def revoke_leases():
     leases_file = "/var/lib/misc/dnsmasq.leases"
@@ -509,8 +518,7 @@ def download_csv():
 if __name__ == "__main__":
     init_csv()
     app.run(host="0.0.0.0", port=80)
-'
-echo "$python_content" > /usr/local/bin/howzit.py
+EOF
 chmod +x /usr/local/bin/howzit.py
 update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
 sleep 0.5
