@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.4.1-Hybrid-NoLCD
+# Version: 1.4.2-Hybrid-NoLCD
 
 # ASCII Header
 cat << "HEADER"
@@ -11,7 +11,7 @@ cat << "HEADER"
 |_| |_|\___/ \_/\_/ /___|_|\__(_)
 HEADER
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - 1.4.1-Hybrid-NoLCD\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - 1.4.2-Hybrid-NoLCD\033[0m\n"
 
 # --- Rollback Routine ---
 if [ -f /usr/local/bin/howzit.py ]; then
@@ -39,7 +39,7 @@ CURRENT_STEP=1
 
 # --- Check for Script Updates ---
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.4.1-Hybrid-NoLCD"
+SCRIPT_VERSION="1.4.2-Hybrid-NoLCD"
 check_for_update() {
     if ! command -v curl >/dev/null 2>&1; then
         echo -e "\033[33mcurl not found. Installing curl...\033[0m"
