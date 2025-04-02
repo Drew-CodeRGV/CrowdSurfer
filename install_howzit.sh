@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.5.1
+# Version: 1.5.2
 
 cat << "HEADER"
  _                       _ _   _ 
@@ -10,20 +10,20 @@ cat << "HEADER"
 |_| |_|\___/ \_/\_/ /___|_|\__(_)
 HEADER
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - 1.5.1\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - 1.5.2\033[0m\n"
 
 # --- Rollback Routine ---
 if [ -f /usr/local/bin/howzit.py ]; then
-  echo -e "\033[33mExisting Howzit installation detected. Rolling back...\033[0m"
-  systemctl stop howzit.service 2>/dev/null
-  systemctl disable howzit.service 2>/dev/null
-  rm -f /etc/systemd/system/howzit.service /usr/local/bin/howzit.py
-  sed -i "\|^interface=eth0\$|d" /etc/dnsmasq.conf
-  sed -i "\|^dhcp-range=10\.69\.0\.10,10\.69\.0\.254,15m\$|d" /etc/dnsmasq.conf
-  sed -i "\|^dhcp-option=option:dns-server,8\.8\.8\.8,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
-  systemctl restart dnsmasq
-  /sbin/iptables -t nat -F
-  echo -e "\033[32mRollback complete.\033[0m"
+echo -e "\033[33mExisting Howzit installation detected. Rolling back...\033[0m"
+systemctl stop howzit.service 2>/dev/null
+systemctl disable howzit.service 2>/dev/null
+rm -f /etc/systemd/system/howzit.service /usr/local/bin/howzit.py
+sed -i "\|^interface=eth0\$|d" /etc/dnsmasq.conf
+sed -i "\|^dhcp-range=10\.69\.0\.10,10\.69\.0\.254,15m\$|d" /etc/dnsmasq.conf
+sed -i "\|^dhcp-option=option:dns-server,8\.8\.8\.8,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
+systemctl restart dnsmasq
+/sbin/iptables -t nat -F
+echo -e "\033[32mRollback complete.\033[0m"
 fi
 
 # --- Progress Update Function ---
@@ -36,7 +36,7 @@ CURRENT_STEP=1
 
 # --- Check for Script Updates (optional) ---
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.5.2"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -261,71 +261,71 @@ def splash():
     redirect_script = ""
     if target_url:
       redirect_script = f"""
-            <script>
-              var seconds = 10;
-              function countdown() {{
-                  if(seconds <= 0) {{
-                      window.location = "{target_url}";
-                  }} else {{
-                      document.getElementById("countdown").innerHTML = seconds;
-                      seconds--;
-                      setTimeout(countdown, 1000);
-                  }}
-              }}
-              window.onload = countdown;
-            </script>
-            """
+<script>
+  var seconds = 10;
+  function countdown() {{
+      if(seconds <= 0) {{
+          window.location = "{target_url}";
+      }} else {{
+          document.getElementById("countdown").innerHTML = seconds;
+          seconds--;
+          setTimeout(countdown, 1000);
+      }}
+  }}
+  window.onload = countdown;
+</script>
+"""
     else:
       redirect_script = "<p>You now have 10 minutes access. Enjoy your browsing!</p>"
     return f"""
-        <html>
-          <head>
-            <title>Registration Complete</title>
-            {redirect_script}
-            <style>
-              body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
-            </style>
-          </head>
-          <body>
-            <p>Thank you for registering!</p>
-            <p>{ 'Redirecting in <span id="countdown">10</span> seconds...' if target_url else '' }</p>
-          </body>
-        </html>
-        """
+<html>
+  <head>
+    <title>Registration Complete</title>
+    {redirect_script}
+    <style>
+      body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+    </style>
+  </head>
+  <body>
+    <p>Thank you for registering!</p>
+    <p>{ 'Redirecting in <span id="countdown">10</span> seconds...' if target_url else '' }</p>
+  </body>
+</html>
+"""
   else:
     return f"""
-        <html>
-          <head>
-            <title>{splash_header}</title>
-            <style>
-              body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
-              form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
-              input[type="text"], input[type="email"], input[type="date"], select {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
-              input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
-              input[type="submit"]:hover {{ background: #0056b3; }}
-            </style>
-          </head>
-          <body>
-            <h1>{splash_header}</h1>
-            <form method="post" action="/?url={original_url}">
-              <input type="hidden" name="url" value="{original_url}">
-              First Name: <input type="text" name="first_name" required><br>
-              Last Name: <input type="text" name="last_name" required><br>
-              Birthday (YYYY-MM-DD): <input type="date" name="birthday" required><br>
-              Zip Code: <input type="text" name="zip_code" required><br>
-              Email: <input type="email" name="email" required><br>
-              Gender: <select name="gender">
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select><br>
-              <input type="submit" value="Register">
-            </form>
-          </body>
-        </html>
-        """
-
+<html>
+  <head>
+    <title>{splash_header}</title>
+    <style>
+      body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+      form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
+      input[type="text"], input[type="email"], input[type="date"], select {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+      input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
+      input[type="submit"]:hover {{ background: #0056b3; }}
+    </style>
+  </head>
+  <body>
+    <h1>{splash_header}</h1>
+    <form method="post" action="/?url={original_url}">
+      <input type="hidden" name="url" value="{original_url}">
+      First Name: <input type="text" name="first_name" required><br>
+      Last Name: <input type="text" name="last_name" required><br>
+      Birthday (YYYY-MM-DD): <input type="date" name="birthday" required><br>
+      Zip Code: <input type="text" name="zip_code" required><br>
+      Email: <input type="email" name="email" required><br>
+      Gender: <select name="gender">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select><br>
+      <input type="submit" value="Register">
+    </form>
+  </body>
+</html>
+"""
+  
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
   global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
@@ -349,20 +349,130 @@ def admin():
     df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date Registered", "Time Registered"])
   total_registrations = len(df)
   return f"""
-    <html>
-      <head>
-        <title>{DEVICE_NAME} - Admin</title>
-        <style>
-          body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
-          form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
-          input[type="text"] {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
-          input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
-          input[type="submit"]:hover {{ background: #0056b3; }}
-          select {{ width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
-        </style>
-      </head>
-      <body>
-        <h1>{DEVICE_NAME} Admin Management</h1>
-        <p>{msg}</p>
-        <form method="post">
-          Change Splash Header: <input type="text" name="header"
+<html>
+  <head>
+    <title>{DEVICE_NAME} - Admin</title>
+    <style>
+      body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+      form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
+      input[type="text"] {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+      input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
+      input[type="submit"]:hover {{ background: #0056b3; }}
+      select {{ width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+    </style>
+  </head>
+  <body>
+    <h1>{DEVICE_NAME} Admin Management</h1>
+    <p>{msg}</p>
+    <form method="post">
+      Change Splash Header: <input type="text" name="header" value="{splash_header}"><br>
+      Redirect Mode:
+      <select name="redirect_mode">
+        <option value="original" {'selected' if REDIRECT_MODE=='original' else ''}>Original Requested URL</option>
+        <option value="fixed" {'selected' if REDIRECT_MODE=='fixed' else ''}>Fixed URL</option>
+        <option value="none" {'selected' if REDIRECT_MODE=='none' else ''}>No Redirect</option>
+      </select><br>
+      Fixed Redirect URL (if applicable): <input type="text" name="fixed_url" value="{FIXED_REDIRECT_URL}"><br>
+      <input type="submit" value="Update Settings">
+    </form>
+    <p>Total Registrations: {total_registrations}</p>
+    <form method="post" action="/admin/revoke">
+      <input type="submit" value="Revoke All Exemptions">
+    </form>
+    <h2>Download CSV</h2>
+    <a href="/download_csv">Download CSV</a>
+  </body>
+</html>
+"""
+  
+@app.route('/admin/revoke', methods=['POST'])
+def revoke_leases():
+  leases_file = "/var/lib/misc/dnsmasq.leases"
+  blocked_ips = []
+  try:
+    with open(leases_file, 'r') as f:
+      for line in f:
+        if not line.strip():
+          continue
+        parts = line.split()
+        if len(parts) >= 3:
+          blocked_ips.append(parts[2])
+  except Exception as e:
+    return "Error reading leases file: " + str(e)
+  import subprocess
+  subprocess.call("iptables -L CAPTIVE_BLOCK >/dev/null 2>&1 || /sbin/iptables -N CAPTIVE_BLOCK", shell=True)
+  subprocess.call("/sbin/iptables -F CAPTIVE_BLOCK", shell=True)
+  subprocess.call("/sbin/iptables -C INPUT -j CAPTIVE_BLOCK 2>/dev/null || /sbin/iptables -I INPUT -j CAPTIVE_BLOCK", shell=True)
+  for ip in blocked_ips:
+    subprocess.call(f"/sbin/iptables -A CAPTIVE_BLOCK -s {ip} -j DROP", shell=True)
+  return "Revoked exemptions for: " + ", ".join(blocked_ips)
+  
+@app.route('/download_csv')
+def download_csv():
+  return send_file(current_csv_filename, as_attachment=True)
+  
+if __name__ == '__main__':
+  init_csv()
+  app.run(host='10.69.0.1', port=80)
+EOF
+
+chmod +x /usr/local/bin/howzit.py
+update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
+# --- Create systemd Service Unit ---
+cat << EOF > /etc/systemd/system/howzit.service
+[Unit]
+Description=Howzit Captive Portal Service on ${DEVICE_NAME}
+After=network.target
+
+[Service]
+Type=simple
+Environment="CP_INTERFACE=${CP_INTERFACE}"
+Environment="DEVICE_NAME=${DEVICE_NAME}"
+Environment="CSV_TIMEOUT=${CSV_TIMEOUT}"
+Environment="CSV_EMAIL=${CSV_EMAIL}"
+Environment="REDIRECT_MODE=${REDIRECT_MODE}"
+Environment="FIXED_REDIRECT_URL=${FIXED_REDIRECT_URL}"
+Environment="MPLCONFIGDIR=/tmp/matplotlib"
+ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
+ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+ExecStartPre=/sbin/iptables -t nat -F
+ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
+ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
+Restart=always
+RestartSec=5
+User=root
+WorkingDirectory=/
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
+echo "Reloading systemd and enabling Howzit service..."
+systemctl daemon-reload
+systemctl enable howzit.service
+systemctl restart howzit.service
+
+update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
+echo ""
+echo -e "\033[32m-----------------------------------------\033[0m"
+echo -e "\033[32mInstallation Summary:\033[0m"
+echo "  Device Name:              $DEVICE_NAME"
+echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
+echo "  Internet Interface:       $INTERNET_INTERFACE"
+echo "  CSV Timeout:              $CSV_TIMEOUT sec"
+echo "  CSV will be emailed to:    $CSV_EMAIL"
+echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
+echo "  Lease Time:               15 minutes"
+echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
+echo "  Redirect Mode:            $REDIRECT_MODE"
+[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
+echo -e "\033[32m-----------------------------------------\033[0m"
