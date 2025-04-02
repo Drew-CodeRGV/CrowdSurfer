@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.5.9
+# Version: 1.6.0
 
 # --- ASCII Header (from previous versions) ---
 ascii_header=" _                       _ _   _ 
@@ -9,7 +9,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.5.9\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.6.0\033[0m\n"
 
 # --- Utility: Print section headers (bold cyan) ---
 print_section_header() {
@@ -30,7 +30,7 @@ update_status() {
   print_status_bar
 }
 
-TOTAL_STEPS=8
+TOTAL_STEPS=9
 CURRENT_STEP=1
 
 # --- Section: Rollback Routine ---
@@ -54,7 +54,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # --- Section: Script Update Check ---
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.5.9"
+SCRIPT_VERSION="1.6.0"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -160,18 +160,20 @@ update_status $CURRENT_STEP $TOTAL_STEPS "/etc/resolv.conf configured."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Package Installation ---
+# --- Section: Package Installation & Gunicorn Setup ---
 print_section_header "Package Installation"
 echo "Updating package lists..."
 apt-get update
 echo "Installing required packages..."
-REQUIRED_PACKAGES=("python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables")
+REQUIRED_PACKAGES=("python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip")
 for pkg in "${REQUIRED_PACKAGES[@]}"; do
   if ! dpkg -s "$pkg" >/dev/null 2>&1; then
     apt-get install -y "$pkg"
   fi
 done
-update_status $CURRENT_STEP $TOTAL_STEPS "Packages installed."
+# Install Gunicorn using pip
+pip3 install --upgrade gunicorn
+update_status $CURRENT_STEP $TOTAL_STEPS "Packages and Gunicorn installed."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -524,7 +526,7 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Create systemd Service Unit ---
+# --- Section: Create systemd Service Unit using Gunicorn ---
 print_section_header "Create systemd Service Unit"
 service_content="[Unit]
 Description=Howzit Captive Portal Service on ${DEVICE_NAME}
@@ -545,7 +547,7 @@ ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
-ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
+ExecStart=/usr/local/bin/gunicorn --bind 0.0.0.0:80 --chdir /usr/local/bin/ howzit:app
 Restart=always
 RestartSec=5
 User=root
@@ -554,7 +556,7 @@ WorkingDirectory=/
 [Install]
 WantedBy=multi-user.target"
 echo "$service_content" > /etc/systemd/system/howzit.service
-update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created."
+update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created using Gunicorn."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
