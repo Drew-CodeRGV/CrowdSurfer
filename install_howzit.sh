@@ -34,7 +34,7 @@ update_status() {
     echo "[$1/$2] $3"
 }
 
-TOTAL_STEPS=7
+TOTAL_STEPS=8
 CURRENT_STEP=1
 
 # --- Check for Script Updates ---
@@ -118,6 +118,17 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Step 1: Configuration complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
+# --- Set Hostname ---
+# Set the system hostname to "DeviceName.cswifi.com"
+NEW_HOSTNAME="${DEVICE_NAME}.cswifi.com"
+hostnamectl set-hostname "$NEW_HOSTNAME"
+# Update /etc/hosts (avoid duplicate entries by removing any existing line with localdomain)
+sed -i "/cswifi.com/d" /etc/hosts
+echo "127.0.1.1 $NEW_HOSTNAME $DEVICE_NAME" >> /etc/hosts
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: Hostname set to $NEW_HOSTNAME."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
 # --- System Update and Package Management ---
 echo "Updating package lists..."
 apt-get update
@@ -126,7 +137,7 @@ apt-get purge -y realvnc-vnc-server realvnc-vnc-viewer
 apt-get autoremove -y
 echo "Upgrading packages..."
 apt-get -y upgrade
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 2: System updated and VNC removed."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 3: System updated and VNC removed."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -142,7 +153,7 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         apt-get install -y "$pkg"
     fi
 done
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 3: Dependencies verified."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: Dependencies verified."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -154,7 +165,7 @@ echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
 echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
 echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
 systemctl restart dnsmasq
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 4: dnsmasq configured."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: dnsmasq configured."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -163,8 +174,8 @@ cat << 'EOF' > /usr/local/bin/howzit.py
 #!/usr/bin/env python3
 import os
 os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib'
-import time, random, threading, smtplib, csv, io, base64, subprocess, re
-from datetime import datetime, date
+import time, random, threading, smtplib, csv, subprocess, re
+from datetime import datetime
 from flask import Flask, request, send_file, redirect
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -455,29 +466,29 @@ if __name__ == '__main__':
 EOF
 
 chmod +x /usr/local/bin/howzit.py
-update_status $CURRENT_STEP $TOTAL_STEPS "Step 5: Application written."
+update_status $CURRENT_STEP $TOTAL_STEPS "Step 6: systemd service created."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Create systemd Service Unit ---
-cat << EOF > /etc/systemd/system/howzit.service
-[Unit]
-Description=Howzit Captive Portal Service on ${DEVICE_NAME}
-After=network.target
+echo "Reloading systemd and enabling Howzit service..."
+systemctl daemon-reload
+systemctl enable howzit.service
+systemctl restart howzit.service
 
-[Service]
-Type=simple
-Environment="CP_INTERFACE=${CP_INTERFACE}"
-Environment="DEVICE_NAME=${DEVICE_NAME}"
-Environment="CSV_TIMEOUT=${CSV_TIMEOUT}"
-Environment="CSV_EMAIL=${CSV_EMAIL}"
-Environment="REDIRECT_MODE=${REDIRECT_MODE}"
-Environment="FIXED_REDIRECT_URL=${FIXED_REDIRECT_URL}"
-Environment="MPLCONFIGDIR=/tmp/matplotlib"
-ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
-ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
-ExecStartPre=/sbin/iptables -t nat -F
-ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
-ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
+update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
+echo ""
+echo -e "\033[32m-----------------------------------------\033[0m"
+echo -e "\033[32mInstallation Summary:\033[0m"
+echo "  Device Name:              $DEVICE_NAME"
+echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
+echo "  Internet Interface:       $INTERNET_INTERFACE"
+echo "  CSV Timeout (sec):        $CSV_TIMEOUT"
+echo "  CSV will be emailed to:    $CSV_EMAIL"
+echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
+echo "  Lease Time:               15 minutes"
+echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
+echo "  Redirect Mode:            $REDIRECT_MODE"
+if [ "$REDIRECT_MODE" == "fixed" ]; then
+    echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
+fi
+echo -e "\033[32m-----------------------------------------\033[0m"
