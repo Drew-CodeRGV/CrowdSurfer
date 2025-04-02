@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.5.8
+# Version: 1.5.9
 
 # --- ASCII Header (from previous versions) ---
 ascii_header=" _                       _ _   _ 
@@ -9,7 +9,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.5.8\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.5.9\033[0m\n"
 
 # --- Utility: Print section headers (bold cyan) ---
 print_section_header() {
@@ -54,7 +54,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # --- Section: Script Update Check ---
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.5.8"
+SCRIPT_VERSION="1.5.9"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
