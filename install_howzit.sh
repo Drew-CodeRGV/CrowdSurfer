@@ -1,22 +1,25 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.6.0
+# Version: 1.7.0
 
-# --- ASCII Header (from previous versions) ---
+# =========================
+# ASCII Header (unchanged)
+# =========================
 ascii_header=" _                       _ _   _ 
 | |__   _____      _____(_) |_| |
 | '_ \ / _ \ \ /\ / /_  / | __| |
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.6.0\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.7.0\033[0m\n"
 
-# --- Utility: Print section headers (bold cyan) ---
+# =========================
+# Utility Functions
+# =========================
 print_section_header() {
   echo -e "\033[1;36m=== $1 ===\033[0m"
 }
 
-# --- Utility: Print persistent status bar at the bottom ---
 print_status_bar() {
   local lines
   lines=$(tput lines)
@@ -24,16 +27,56 @@ print_status_bar() {
   echo -ne "\033[7mInstall Progress: Step $CURRENT_STEP of $TOTAL_STEPS\033[0m"
 }
 
-# --- Utility: Update status and print the status bar ---
 update_status() {
   echo "[$1/$2] $3"
   print_status_bar
 }
 
+# Persist iptables rules by saving to file
+persist_iptables() {
+  # Create directory if needed
+  [ ! -d /etc/iptables ] && mkdir -p /etc/iptables
+  /sbin/iptables-save > /etc/iptables/howzit.rules
+}
+
+# Restore iptables rules from file (if exists)
+restore_iptables() {
+  if [ -f /etc/iptables/howzit.rules ]; then
+    /sbin/iptables-restore < /etc/iptables/howzit.rules
+  fi
+}
+
+# Install required packages
+install_packages() {
+  local packages=("$@")
+  for pkg in "${packages[@]}"; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+      apt-get install -y "$pkg"
+    fi
+  done
+}
+
+# Configure dnsmasq in one step
+configure_dnsmasq() {
+  sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
+  sed -i '/^interface=/d' /etc/dnsmasq.conf
+  {
+    echo "interface=${CP_INTERFACE}"
+    echo "dhcp-range=10.69.0.10,10.69.0.254,15m"
+    echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1"
+  } >> /etc/dnsmasq.conf
+  systemctl restart dnsmasq
+}
+
+# =========================
+# Set Total Steps
+# =========================
 TOTAL_STEPS=9
 CURRENT_STEP=1
 
-# --- Section: Rollback Routine ---
+# =========================
+# Rollback Routine
+# =========================
 print_section_header "Rollback Routine"
 if [ -f /usr/local/bin/howzit.py ]; then
   echo -e "\033[33mExisting Howzit installation detected. Rolling back...\033[0m"
@@ -45,16 +88,19 @@ if [ -f /usr/local/bin/howzit.py ]; then
   sed -i "\|^dhcp-option=option:dns-server,8\.8\.8\.8,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
   systemctl restart dnsmasq
   /sbin/iptables -t nat -F
+  persist_iptables
   echo -e "\033[32mRollback complete.\033[0m"
 fi
 update_status $CURRENT_STEP $TOTAL_STEPS "Rollback complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Script Update Check ---
+# =========================
+# Script Update Check
+# =========================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.6.0"
+SCRIPT_VERSION="1.7.0"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -86,7 +132,9 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Script update check complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Interactive Configuration ---
+# =========================
+# Interactive Configuration
+# =========================
 print_section_header "Interactive Configuration"
 echo "Configuration Setup:"
 read -p "Enter Device Name [Howzit01]: " DEVICE_NAME
@@ -129,7 +177,9 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Configuration complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Set System Hostname & Update /etc/hosts ---
+# =========================
+# Set System Hostname & Update /etc/hosts
+# =========================
 print_section_header "Set System Hostname"
 NEW_HOSTNAME="${DEVICE_NAME}.cswifi.com"
 echo "Setting hostname to ${NEW_HOSTNAME}"
@@ -150,7 +200,9 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Hostname set and /etc/hosts updated."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Configure /etc/resolv.conf ---
+# =========================
+# Configure /etc/resolv.conf
+# =========================
 print_section_header "Configure /etc/resolv.conf"
 if ! grep -q "nameserver 8.8.8.8" /etc/resolv.conf; then
   echo "nameserver 8.8.8.8" >> /etc/resolv.conf
@@ -160,37 +212,32 @@ update_status $CURRENT_STEP $TOTAL_STEPS "/etc/resolv.conf configured."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Package Installation & Gunicorn Setup ---
+# =========================
+# Package Installation & Gunicorn Setup
+# =========================
 print_section_header "Package Installation"
 echo "Updating package lists..."
 apt-get update
 echo "Installing required packages..."
-REQUIRED_PACKAGES=("python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip")
-for pkg in "${REQUIRED_PACKAGES[@]}"; do
-  if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-    apt-get install -y "$pkg"
-  fi
-done
-# Install Gunicorn using pip
+install_packages "python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip"
+echo "Installing Gunicorn..."
 pip3 install --upgrade gunicorn
 update_status $CURRENT_STEP $TOTAL_STEPS "Packages and Gunicorn installed."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Configure dnsmasq ---
+# =========================
+# Configure dnsmasq
+# =========================
 print_section_header "Configure dnsmasq"
-echo "Configuring dnsmasq for interface ${CP_INTERFACE}..."
-sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf
-sed -i '/^interface=/d' /etc/dnsmasq.conf
-echo "interface=${CP_INTERFACE}" >> /etc/dnsmasq.conf
-echo "dhcp-range=10.69.0.10,10.69.0.254,15m" >> /etc/dnsmasq.conf
-echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1" >> /etc/dnsmasq.conf
-systemctl restart dnsmasq
+configure_dnsmasq
 update_status $CURRENT_STEP $TOTAL_STEPS "dnsmasq configured."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Write Captive Portal Python Application ---
+# =========================
+# Write Captive Portal Python Application
+# =========================
 print_section_header "Write Captive Portal Application"
 cat > /usr/local/bin/howzit.py << 'EOF'
 #!/usr/bin/env python3
@@ -526,7 +573,9 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
-# --- Section: Create systemd Service Unit using Gunicorn ---
+# =========================
+# Create systemd Service Unit using Gunicorn with 4 workers and restore persisted iptables rules
+# =========================
 print_section_header "Create systemd Service Unit"
 service_content="[Unit]
 Description=Howzit Captive Portal Service on ${DEVICE_NAME}
@@ -547,7 +596,8 @@ ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
-ExecStart=/usr/local/bin/gunicorn --bind 0.0.0.0:80 --chdir /usr/local/bin/ howzit:app
+ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
+ExecStart=/usr/local/bin/gunicorn --workers 4 --bind 0.0.0.0:80 --chdir /usr/local/bin/ howzit:app
 Restart=always
 RestartSec=5
 User=root
@@ -565,6 +615,7 @@ systemctl daemon-reload
 systemctl enable howzit.service
 systemctl restart howzit.service
 
+persist_iptables
 update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
 echo ""
 echo -e "\033[32m-----------------------------------------\033[0m"
