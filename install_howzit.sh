@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.5.0
+# Version: 1.5.1
 
 cat << "HEADER"
  _                       _ _   _ 
@@ -10,7 +10,7 @@ cat << "HEADER"
 |_| |_|\___/ \_/\_/ /___|_|\__(_)
 HEADER
 
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - 1.5.0\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - 1.5.1\033[0m\n"
 
 # --- Rollback Routine ---
 if [ -f /usr/local/bin/howzit.py ]; then
@@ -36,7 +36,7 @@ CURRENT_STEP=1
 
 # --- Check for Script Updates (optional) ---
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.5.0"
+SCRIPT_VERSION="1.5.1"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -365,132 +365,4 @@ def admin():
         <h1>{DEVICE_NAME} Admin Management</h1>
         <p>{msg}</p>
         <form method="post">
-          Change Splash Header: <input type="text" name="header" value="{splash_header}"><br>
-          Redirect Mode:
-          <select name="redirect_mode">
-            <option value="original" {'selected' if REDIRECT_MODE=='original' else ''}>Original Requested URL</option>
-            <option value="fixed" {'selected' if REDIRECT_MODE=='fixed' else ''}>Fixed URL</option>
-            <option value="none" {'selected' if REDIRECT_MODE=='none' else ''}>No Redirect</option>
-          </select><br>
-          Fixed Redirect URL (if applicable): <input type="text" name="fixed_url" value="{FIXED_REDIRECT_URL}"><br>
-          <input type="submit" value="Update Settings">
-        </form>
-        <p>Total Registrations: {total_registrations}</p>
-        <form method="post" action="/admin/revoke">
-          <input type="submit" value="Revoke All Exemptions">
-        </form>
-        <h2>Download CSV</h2>
-        <a href="/download_csv">Download CSV</a>
-      </body>
-    </html>
-    """
-
-@app.route('/admin/revoke', methods=['POST'])
-def revoke_leases():
-  leases_file = "/var/lib/misc/dnsmasq.leases"
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  # Use a while loop to read and remove the first line of the leases file
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  blocked_ips=()
-  # In bash arrays, we use the following:
-  blocked_ips=()
-  while read -r line; do
-    [ -z "$line" ] && break
-    ip=$(echo "$line" | awk '{print $3}')
-    blocked_ips+=("$ip")
-  done < "$leases_file"
-  import subprocess
-  subprocess.call("iptables -L CAPTIVE_BLOCK >/dev/null 2>&1 || /sbin/iptables -N CAPTIVE_BLOCK", shell=True)
-  subprocess.call("/sbin/iptables -F CAPTIVE_BLOCK", shell=True)
-  subprocess.call("/sbin/iptables -C INPUT -j CAPTIVE_BLOCK 2>/dev/null || /sbin/iptables -I INPUT -j CAPTIVE_BLOCK", shell=True)
-  for ip in "${blocked_ips[@]}"; do
-    subprocess.call(f"/sbin/iptables -A CAPTIVE_BLOCK -s {ip} -j DROP", shell=True)
-  done
-  echo "Revoked exemptions for: ${blocked_ips[*]}"
-}
-
-@app.route('/download_csv')
-def download_csv():
-  return send_file(current_csv_filename, as_attachment=True)
-
-if __name__ == '__main__':
-  init_csv()
-  app.run(host='10.69.0.1', port=80)
-EOF
-
-chmod +x /usr/local/bin/howzit.py
-update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
-sleep 0.5
-CURRENT_STEP=$((CURRENT_STEP+1))
-
-# --- Create systemd Service Unit ---
-cat << EOF > /etc/systemd/system/howzit.service
-[Unit]
-Description=Howzit Captive Portal Service on ${DEVICE_NAME}
-After=network.target
-
-[Service]
-Type=simple
-Environment="CP_INTERFACE=${CP_INTERFACE}"
-Environment="DEVICE_NAME=${DEVICE_NAME}"
-Environment="CSV_TIMEOUT=${CSV_TIMEOUT}"
-Environment="CSV_EMAIL=${CSV_EMAIL}"
-Environment="REDIRECT_MODE=${REDIRECT_MODE}"
-Environment="FIXED_REDIRECT_URL=${FIXED_REDIRECT_URL}"
-Environment="MPLCONFIGDIR=/tmp/matplotlib"
-ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
-ExecStartPre=/bin/sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
-ExecStartPre=/sbin/iptables -t nat -F
-ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
-ExecStart=/usr/bin/python3 /usr/local/bin/howzit.py
-Restart=always
-RestartSec=5
-User=root
-WorkingDirectory=/
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created."
-sleep 0.5
-CURRENT_STEP=$((CURRENT_STEP+1))
-
-echo "Reloading systemd and enabling Howzit service..."
-systemctl daemon-reload
-systemctl enable howzit.service
-systemctl restart howzit.service
-
-update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
-echo ""
-echo -e "\033[32m-----------------------------------------\033[0m"
-echo -e "\033[32mInstallation Summary:\033[0m"
-echo "  Device Name:              $DEVICE_NAME"
-echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
-echo "  Internet Interface:       $INTERNET_INTERFACE"
-echo "  CSV Timeout:              $CSV_TIMEOUT sec"
-echo "  CSV will be emailed to:    $CSV_EMAIL"
-echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
-echo "  Lease Time:               15 minutes"
-echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
-echo "  Redirect Mode:            $REDIRECT_MODE"
-[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
-echo -e "\033[32m-----------------------------------------\033[0m"
+          Change Splash Header: <input type="text" name="header"
