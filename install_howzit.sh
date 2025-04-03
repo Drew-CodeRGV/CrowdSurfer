@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.7.2
+# Version: 1.7.3
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.7.2\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.7.3\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -95,7 +95,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.7.2"
+SCRIPT_VERSION="1.7.3"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -217,8 +217,11 @@ echo "Installing required packages..."
 install_packages "python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip"
 echo "Installing Gunicorn via apt-get..."
 apt-get install -y python3-gunicorn
-# Determine Gunicorn path (try gunicorn and gunicorn3)
-GUNICORN_PATH=$(which gunicorn || which gunicorn3)
+# Determine Gunicorn path: try gunicorn3 first, then gunicorn
+GUNICORN_PATH=$(command -v gunicorn3)
+if [ -z "$GUNICORN_PATH" ]; then
+  GUNICORN_PATH=$(command -v gunicorn)
+fi
 if [ -z "$GUNICORN_PATH" ]; then
   echo "Error: Gunicorn not found. Exiting."
   exit 1
@@ -609,11 +612,16 @@ WorkingDirectory=/
 
 [Install]
 WantedBy=multi-user.target"
-# Determine Gunicorn path (try gunicorn and gunicorn3)
-GUNICORN_PATH=$(which gunicorn || which gunicorn3)
+# Determine Gunicorn path (try gunicorn3 first, then gunicorn)
+GUNICORN_PATH=$(command -v gunicorn3)
+if [ -z "$GUNICORN_PATH" ]; then
+  GUNICORN_PATH=$(command -v gunicorn)
+fi
 if [ -z "$GUNICORN_PATH" ]; then
   echo "Error: Gunicorn not found. Exiting."
   exit 1
+else
+  echo "Gunicorn found at: $GUNICORN_PATH"
 fi
 service_content=$(echo "$service_content" | sed "s|\${GUNICORN_PATH}|$GUNICORN_PATH|g")
 echo "$service_content" > /etc/systemd/system/howzit.service
