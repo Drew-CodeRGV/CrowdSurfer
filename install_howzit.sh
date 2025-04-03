@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.7.6
+# Version: 2.0.0
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.7.6\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.0.0\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -95,7 +95,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.7.6"
+SCRIPT_VERSION="2.0.0"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -207,28 +207,24 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # ==============================
-# Section: Package Installation & Gunicorn Setup
+# Section: Package Installation & Waitress Setup
 # ==============================
 print_section_header "Package Installation"
 echo "Updating package lists..."
 apt-get update
 echo "Installing required packages..."
 install_packages "python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip"
-echo "Installing Gunicorn via apt-get..."
-apt-get install -y python3-gunicorn
-# Determine Gunicorn path: check /usr/bin/gunicorn3 first, then command -v gunicorn
-if [ -x /usr/bin/gunicorn3 ]; then
-  GUNICORN_PATH="/usr/bin/gunicorn3"
-else
-  GUNICORN_PATH=$(command -v gunicorn)
-fi
-if [ -z "$GUNICORN_PATH" ]; then
-  echo "Error: Gunicorn not found. Exiting."
+echo "Installing Waitress via apt-get..."
+apt-get install -y python3-waitress
+# Determine Waitress path
+WAITRESS_PATH=$(command -v waitress-serve)
+if [ -z "$WAITRESS_PATH" ]; then
+  echo "Error: Waitress not found. Exiting."
   exit 1
 else
-  echo "Gunicorn found at: $GUNICORN_PATH"
+  echo "Waitress found at: $WAITRESS_PATH"
 fi
-update_status $CURRENT_STEP $TOTAL_STEPS "Packages and Gunicorn installed."
+update_status $CURRENT_STEP $TOTAL_STEPS "Packages and Waitress installed."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -459,6 +455,120 @@ def splash():
     </form>
   </body>
 </html>
+"""
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    import socket
+    current_hostname = socket.gethostname()
+    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
+    msg = ""
+    if request.method == "POST":
+        if "hostname" in request.form:
+            new_hostname = request.form.get("hostname")
+            if new_hostname and new_hostname != current_hostname:
+                try:
+                    os.system(f"hostnamectl set-hostname {new_hostname}")
+                    update_hosts_file(new_hostname)
+                    msg += f"Hostname updated to {new_hostname}. "
+                except Exception as e:
+                    msg += f"Error updating hostname: {e}. "
+        if "header" in request.form:
+            new_header = request.form.get("header")
+            if new_header:
+                splash_header = new_header
+                msg += "Splash header updated successfully. "
+        if "redirect_mode" in request.form:
+            REDIRECT_MODE = request.form.get("redirect_mode")
+            if REDIRECT_MODE == "fixed":
+                FIXED_REDIRECT_URL = request.form.get("fixed_url", "")
+            else:
+                FIXED_REDIRECT_URL = ""
+            msg += "Redirect settings updated."
+    try:
+        df = pd.read_csv(current_csv_filename)
+    except Exception:
+        df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date Registered", "Time Registered"])
+    total_registrations = len(df)
+    return f"""
+<html>
+  <head>
+    <title>{DEVICE_NAME} - Admin</title>
+    <style>
+      body {{ font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
+      form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
+      input[type="text"] {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+      input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
+      input[type="submit"]:hover {{ background: #0056b3; }}
+      select {{ width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
+    </style>
+  </head>
+  <body>
+    <h1>{DEVICE_NAME} Admin Management</h1>
+    <form method="post">
+      Hostname: <input type="text" name="hostname" value="{current_hostname}" required><br>
+      Change Splash Header: <input type="text" name="header" value="{splash_header}"><br>
+      Redirect Mode:
+      <select name="redirect_mode">
+        <option value="original" {"selected" if REDIRECT_MODE=="original" else ""}>Original Requested URL</option>
+        <option value="fixed" {"selected" if REDIRECT_MODE=="fixed" else ""}>Fixed URL</option>
+        <option value="none" {"selected" if REDIRECT_MODE=="none" else ""}>No Redirect</option>
+      </select><br>
+      Fixed Redirect URL (if applicable): <input type="text" name="fixed_url" value="{FIXED_REDIRECT_URL}"><br>
+      <input type="submit" value="Update Settings">
+    </form>
+    <p>Total Registrations: {total_registrations}</p>
+    <form method="post" action="/admin/revoke">
+      <input type="submit" value="Revoke All Exemptions">
+    </form>
+    <h2>Download CSV</h2>
+    <a href="/download_csv">Download CSV</a>
+  </body>
+</html>
+"""
+
+def update_hosts_file(new_hostname):
+    try:
+        short_hostname = new_hostname.split(".")[0]
+        entry = f"127.0.0.1   {new_hostname} {short_hostname}\n"
+        with open("/etc/hosts", "r") as f:
+            hosts = f.readlines()
+        if not any(new_hostname in line for line in hosts):
+            with open("/etc/hosts", "a") as f:
+                f.write(entry)
+            print(f"/etc/hosts updated with: {entry.strip()}")
+    except Exception as e:
+        print("Error updating /etc/hosts:", e)
+
+@app.route("/admin/revoke", methods=["POST"])
+def revoke_leases():
+    leases_file = "/var/lib/misc/dnsmasq.leases"
+    blocked_ips = []
+    try:
+        with open(leases_file, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) >= 3:
+                    blocked_ips.append(parts[2])
+    except Exception as e:
+        return "Error reading leases file: " + str(e)
+    import subprocess
+    subprocess.call("iptables -L CAPTIVE_BLOCK >/dev/null 2>&1 || /sbin/iptables -N CAPTIVE_BLOCK", shell=True)
+    subprocess.call("/sbin/iptables -F CAPTIVE_BLOCK", shell=True)
+    subprocess.call("/sbin/iptables -C INPUT -j CAPTIVE_BLOCK 2>/dev/null || /sbin/iptables -I INPUT -j CAPTIVE_BLOCK", shell=True)
+    for ip in blocked_ips:
+        subprocess.call(f"/sbin/iptables -A CAPTIVE_BLOCK -s {ip} -j DROP", shell=True)
+    return "Revoked exemptions for: " + ", ".join(blocked_ips)
+
+@app.route("/download_csv")
+def download_csv():
+    return send_file(current_csv_filename, as_attachment=True)
+
+if __name__ == "__main__":
+    init_csv()
+    app.run(host="0.0.0.0", port=80)
 EOF
 chmod +x /usr/local/bin/howzit.py
 update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
@@ -466,7 +576,7 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # ==============================
-# Section: Create systemd Service Unit using Gunicorn with 4 workers
+# Section: Create systemd Service Unit using Waitress
 # and restoring persisted iptables rules
 # ==============================
 print_section_header "Create systemd Service Unit"
@@ -490,7 +600,7 @@ ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MA
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
-ExecStart=${GUNICORN_PATH} --workers 4 --bind 0.0.0.0:80 --chdir /usr/local/bin/ howzit:app
+ExecStart=/usr/bin/waitress-serve --host=0.0.0.0 --port=80 howzit:app
 Restart=always
 RestartSec=5
 User=root
@@ -498,21 +608,8 @@ WorkingDirectory=/
 
 [Install]
 WantedBy=multi-user.target"
-# Determine Gunicorn path explicitly
-if [ -x /usr/bin/gunicorn3 ]; then
-  GUNICORN_PATH="/usr/bin/gunicorn3"
-else
-  GUNICORN_PATH=$(command -v gunicorn)
-fi
-if [ -z "$GUNICORN_PATH" ]; then
-  echo "Error: Gunicorn not found. Exiting."
-  exit 1
-else
-  echo "Gunicorn found at: $GUNICORN_PATH"
-fi
-service_content=$(echo "$service_content" | sed "s|\${GUNICORN_PATH}|$GUNICORN_PATH|g")
 echo "$service_content" > /etc/systemd/system/howzit.service
-update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created using Gunicorn."
+update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created using Waitress."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
