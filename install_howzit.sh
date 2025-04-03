@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 2.2.2
+# Version: 2.3.0
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.2.2\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.3.0\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -74,7 +74,7 @@ configure_captive_interface() {
 # ==============================
 # Total Steps
 # ==============================
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 CURRENT_STEP=1
 
 # ==============================
@@ -104,7 +104,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="2.2.2"
+SCRIPT_VERSION="2.3.0"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -551,6 +551,19 @@ def admin():
         "</html>\n"
     )
 
+def update_hosts_file(new_hostname):
+    try:
+        short_hostname = new_hostname.split(".")[0]
+        entry = "127.0.0.1   " + new_hostname + " " + short_hostname + "\n"
+        with open("/etc/hosts", "r") as f:
+            hosts = f.readlines()
+        if not any(new_hostname in line for line in hosts):
+            with open("/etc/hosts", "a") as f:
+                f.write(entry)
+            print("/etc/hosts updated with: " + entry.strip())
+    except Exception as e:
+        print("Error updating /etc/hosts:", e)
+
 @app.route("/admin/revoke", methods=["POST"])
 def revoke_leases():
     leases_file = "/var/lib/misc/dnsmasq.leases"
@@ -613,6 +626,8 @@ ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
+ExecStartPre=/sbin/iptables -I FORWARD -i ${CP_INTERFACE} -o ${INTERNET_INTERFACE} -j ACCEPT
+ExecStartPre=/sbin/iptables -I FORWARD -i ${INTERNET_INTERFACE} -o ${CP_INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
 ExecStart=${WAITRESS_PATH} --listen=10.69.0.1:80 howzit:app
 Restart=always
