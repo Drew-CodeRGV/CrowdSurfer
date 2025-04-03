@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 2.1.1
+# Version: 2.1.2
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.1.1\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.1.2\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -95,7 +95,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="2.1.1"
+SCRIPT_VERSION="2.1.2"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -229,7 +229,7 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # ==============================
-# Section: Configure dnsmasq
+# Section: Configure dnsmasq (again)
 # ==============================
 print_section_header "Configure dnsmasq"
 configure_dnsmasq
@@ -479,7 +479,6 @@ Environment=\"CSV_EMAIL=${CSV_EMAIL}\"
 Environment=\"REDIRECT_MODE=${REDIRECT_MODE}\"
 Environment=\"FIXED_REDIRECT_URL=${FIXED_REDIRECT_URL}\"
 Environment=\"MPLCONFIGDIR=/tmp/matplotlib\"
-# Set working directory so that howzit.py is importable as module 'howzit'
 WorkingDirectory=/usr/local/bin
 ExecStartPre=/sbin/ifconfig ${CP_INTERFACE} 10.69.0.1 netmask 255.255.255.0 up
 ExecStartPre=/bin/sh -c \"echo 1 > /proc/sys/net/ipv4/ip_forward\"
@@ -488,7 +487,7 @@ ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MA
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
-ExecStart=${WAITRESS_PATH} --host=10.69.0.1 --port=80 --chdir=/usr/local/bin howzit:app
+ExecStart=${WAITRESS_PATH} --host=10.69.0.1 --port=80 howzit:app
 Restart=always
 RestartSec=5
 User=root
