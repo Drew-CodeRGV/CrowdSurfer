@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 1.7.5
+# Version: 1.7.6
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.7.5\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 1.7.6\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -95,7 +95,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="1.7.5"
+SCRIPT_VERSION="1.7.6"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -216,7 +216,7 @@ echo "Installing required packages..."
 install_packages "python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip"
 echo "Installing Gunicorn via apt-get..."
 apt-get install -y python3-gunicorn
-# Determine Gunicorn path: check /usr/bin/gunicorn3 first, then use command -v gunicorn
+# Determine Gunicorn path: check /usr/bin/gunicorn3 first, then command -v gunicorn
 if [ -x /usr/bin/gunicorn3 ]; then
   GUNICORN_PATH="/usr/bin/gunicorn3"
 else
