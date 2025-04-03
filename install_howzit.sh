@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 2.1.2
+# Version: 2.2.0
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.1.2\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.2.0\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -95,7 +95,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="2.1.2"
+SCRIPT_VERSION="2.2.0"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -389,72 +389,184 @@ def splash():
             target_url = FIXED_REDIRECT_URL
         else:
             target_url = ""
-        redirect_script = ""
         if target_url:
-            redirect_script = f"""
-<script>
-  var seconds = 10;
-  function countdown() {{
-      if(seconds <= 0) {{
-          window.location = "{target_url}";
-      }} else {{
-          document.getElementById("countdown").innerHTML = seconds;
-          seconds--;
-          setTimeout(countdown, 1000);
-      }}
-  }}
-  window.onload = countdown;
-</script>
-"""
+            redirect_script = (
+                "<script>\n"
+                "  var seconds = 10;\n"
+                "  function countdown() {\n"
+                f"      if(seconds <= 0) {{ window.location = \"{target_url}\"; }}\n"
+                "      else {\n"
+                "          document.getElementById(\"countdown\").innerHTML = seconds;\n"
+                "          seconds--;\n"
+                "          setTimeout(countdown, 1000);\n"
+                "      }\n"
+                "  }\n"
+                "  window.onload = countdown;\n"
+                "</script>\n"
+            )
         else:
             redirect_script = "<p>You now have 10 minutes access. Enjoy your browsing!</p>"
-        return f"""
-<html>
-  <head>
-    <title>Registration Complete</title>
-    {redirect_script}
-    <style>
-      body {{ font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
-    </style>
-  </head>
-  <body>
-    <p>Thank you for registering!</p>
-    <p>{"Redirecting in <span id=\"countdown\">10</span> seconds..." if target_url else ""}</p>
-  </body>
-</html>
-"""
+        return (
+            "<html>\n"
+            "  <head>\n"
+            "    <title>Registration Complete</title>\n"
+            f"    {redirect_script}\n"
+            "    <style>\n"
+            "      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }\n"
+            "    </style>\n"
+            "  </head>\n"
+            "  <body>\n"
+            "    <p>Thank you for registering!</p>\n"
+            "    <p>" + ("Redirecting in <span id=\"countdown\">10</span> seconds..." if target_url else "") + "</p>\n"
+            "  </body>\n"
+            "</html>\n"
+        )
     else:
-        return f"""
-<html>
-  <head>
-    <title>{splash_header}</title>
-    <style>
-      body {{ font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }}
-      form {{ display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }}
-      input[type="text"], input[type="email"], input[type="date"], select {{ width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }}
-      input[type="submit"] {{ background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }}
-      input[type="submit"]:hover {{ background: #0056b3; }}
-    </style>
-  </head>
-  <body>
-    <h1>{splash_header}</h1>
-    <form method="post" action="/?url={original_url}">
-      <input type="hidden" name="url" value="{original_url}">
-      First Name: <input type="text" name="first_name" required><br>
-      Last Name: <input type="text" name="last_name" required><br>
-      Birthday (YYYY-MM-DD): <input type="date" name="birthday" required><br>
-      Zip Code: <input type="text" name="zip_code" required><br>
-      Email: <input type="email" name="email" required><br>
-      Gender: <select name="gender">
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-                <option value="Prefer not to say">Prefer not to say</option>
-              </select><br>
-      <input type="submit" value="Register">
-    </form>
-  </body>
-</html>
+        return (
+            "<html>\n"
+            "  <head>\n"
+            f"    <title>{splash_header}</title>\n"
+            "    <style>\n"
+            "      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }\n"
+            "      form { display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }\n"
+            "      input[type='text'], input[type='email'], input[type='date'], select { width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }\n"
+            "      input[type='submit'] { background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }\n"
+            "      input[type='submit']:hover { background: #0056b3; }\n"
+            "    </style>\n"
+            "  </head>\n"
+            "  <body>\n"
+            f"    <h1>{splash_header}</h1>\n"
+            f"    <form method='post' action='/?url={original_url}'>\n"
+            f"      <input type='hidden' name='url' value='{original_url}'>\n"
+            "      First Name: <input type='text' name='first_name' required><br>\n"
+            "      Last Name: <input type='text' name='last_name' required><br>\n"
+            "      Birthday (YYYY-MM-DD): <input type='date' name='birthday' required><br>\n"
+            "      Zip Code: <input type='text' name='zip_code' required><br>\n"
+            "      Email: <input type='email' name='email' required><br>\n"
+            "      Gender: <select name='gender'>\n"
+            "                <option value='Male'>Male</option>\n"
+            "                <option value='Female'>Female</option>\n"
+            "                <option value='Other'>Other</option>\n"
+            "                <option value='Prefer not to say'>Prefer not to say</option>\n"
+            "              </select><br>\n"
+            "      <input type='submit' value='Register'>\n"
+            "    </form>\n"
+            "  </body>\n"
+            "</html>\n"
+        )
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    import socket
+    current_hostname = socket.gethostname()
+    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
+    msg = ""
+    if request.method == "POST":
+        if "hostname" in request.form:
+            new_hostname = request.form.get("hostname")
+            if new_hostname and new_hostname != current_hostname:
+                try:
+                    os.system(f"hostnamectl set-hostname {new_hostname}")
+                    update_hosts_file(new_hostname)
+                    msg += f"Hostname updated to {new_hostname}. "
+                except Exception as e:
+                    msg += f"Error updating hostname: {e}. "
+        if "header" in request.form:
+            new_header = request.form.get("header")
+            if new_header:
+                splash_header = new_header
+                msg += "Splash header updated successfully. "
+        if "redirect_mode" in request.form:
+            REDIRECT_MODE = request.form.get("redirect_mode")
+            if REDIRECT_MODE == "fixed":
+                FIXED_REDIRECT_URL = request.form.get("fixed_url", "")
+            else:
+                FIXED_REDIRECT_URL = ""
+            msg += "Redirect settings updated."
+    try:
+        df = pd.read_csv(current_csv_filename)
+    except Exception:
+        df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date Registered", "Time Registered"])
+    total_registrations = len(df)
+    return (
+        "<html>\n"
+        "  <head>\n"
+        f"    <title>{DEVICE_NAME} - Admin</title>\n"
+        "    <style>\n"
+        "      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }\n"
+        "      form { display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }\n"
+        "      input[type='text'] { width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }\n"
+        "      input[type='submit'] { background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }\n"
+        "      input[type='submit']:hover { background: #0056b3; }\n"
+        "      select { width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }\n"
+        "    </style>\n"
+        "  </head>\n"
+        "  <body>\n"
+        f"    <h1>{DEVICE_NAME} Admin Management</h1>\n"
+        "    <form method='post'>\n"
+        f"      Hostname: <input type='text' name='hostname' value='{current_hostname}' required><br>\n"
+        f"      Change Splash Header: <input type='text' name='header' value='{splash_header}'><br>\n"
+        "      Redirect Mode:\n"
+        "      <select name='redirect_mode'>\n"
+        f"        <option value='original' {'selected' if REDIRECT_MODE=='original' else ''}>Original Requested URL</option>\n"
+        f"        <option value='fixed' {'selected' if REDIRECT_MODE=='fixed' else ''}>Fixed URL</option>\n"
+        f"        <option value='none' {'selected' if REDIRECT_MODE=='none' else ''}>No Redirect</option>\n"
+        "      </select><br>\n"
+        f"      Fixed Redirect URL (if applicable): <input type='text' name='fixed_url' value='{FIXED_REDIRECT_URL}'><br>\n"
+        "      <input type='submit' value='Update Settings'>\n"
+        "    </form>\n"
+        f"    <p>Total Registrations: {total_registrations}</p>\n"
+        "    <form method='post' action='/admin/revoke'>\n"
+        "      <input type='submit' value='Revoke All Exemptions'>\n"
+        "    </form>\n"
+        "    <h2>Download CSV</h2>\n"
+        "    <a href='/download_csv'>Download CSV</a>\n"
+        "  </body>\n"
+        "</html>\n"
+    )
+
+def update_hosts_file(new_hostname):
+    try:
+        short_hostname = new_hostname.split(".")[0]
+        entry = f"127.0.0.1   {new_hostname} {short_hostname}\n"
+        with open("/etc/hosts", "r") as f:
+            hosts = f.readlines()
+        if not any(new_hostname in line for line in hosts):
+            with open("/etc/hosts", "a") as f:
+                f.write(entry)
+            print(f"/etc/hosts updated with: {entry.strip()}")
+    except Exception as e:
+        print("Error updating /etc/hosts:", e)
+
+@app.route("/admin/revoke", methods=["POST"])
+def revoke_leases():
+    leases_file = "/var/lib/misc/dnsmasq.leases"
+    blocked_ips = []
+    try:
+        with open(leases_file, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) >= 3:
+                    blocked_ips.append(parts[2])
+    except Exception as e:
+        return "Error reading leases file: " + str(e)
+    import subprocess
+    subprocess.call("iptables -L CAPTIVE_BLOCK >/dev/null 2>&1 || /sbin/iptables -N CAPTIVE_BLOCK", shell=True)
+    subprocess.call("/sbin/iptables -F CAPTIVE_BLOCK", shell=True)
+    subprocess.call("/sbin/iptables -C INPUT -j CAPTIVE_BLOCK 2>/dev/null || /sbin/iptables -I INPUT -j CAPTIVE_BLOCK", shell=True)
+    for ip in blocked_ips:
+        subprocess.call(f"/sbin/iptables -A CAPTIVE_BLOCK -s {ip} -j DROP", shell=True)
+    return "Revoked exemptions for: " + ", ".join(blocked_ips)
+
+@app.route("/download_csv")
+def download_csv():
+    return send_file(current_csv_filename, as_attachment=True)
+
+if __name__ == "__main__":
+    init_csv()
+    app.run(host="0.0.0.0", port=80)
 EOF
 chmod +x /usr/local/bin/howzit.py
 update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
@@ -487,7 +599,7 @@ ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MA
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
-ExecStart=${WAITRESS_PATH} --host=10.69.0.1 --port=80 howzit:app
+ExecStart=${WAITRESS_PATH} --listen=10.69.0.1:80 howzit:app
 Restart=always
 RestartSec=5
 User=root
