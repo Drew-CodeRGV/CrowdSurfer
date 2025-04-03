@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 2.2.1
+# Version: 2.2.2
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.2.1\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.2.2\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -104,7 +104,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="2.2.1"
+SCRIPT_VERSION="2.2.2"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -373,7 +373,7 @@ def send_csv_via_email():
     msg["To"] = CSV_EMAIL
     msg.attach(MIMEText("Attached is the CSV file for the session."))
     part = MIMEApplication(content, Name=current_csv_filename)
-    part["Content-Disposition"] = 'attachment; filename="' + current_csv_filename + '"'
+    part["Content-Disposition"] = "attachment; filename=\"" + current_csv_filename + "\""
     msg.attach(part)
     try:
         s = smtplib.SMTP("localhost")
@@ -392,7 +392,7 @@ def splash():
         client_ip = request.remote_addr
         mac = get_mac(client_ip)
         email = request.form.get("email")
-        key = mac + "_" + email if mac else "unknown_" + email
+        key = (mac + "_" + email) if mac else ("unknown_" + email)
         if key not in registered_clients:
             registered_clients[key] = time.time() + 600
             if mac:
@@ -577,8 +577,10 @@ def revoke_leases():
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
+# Initialize CSV file on import so that current_csv_filename is not None.
+init_csv()
+
 if __name__ == "__main__":
-    init_csv()
     app.run(host="0.0.0.0", port=80)
 EOF
 chmod +x /usr/local/bin/howzit.py
