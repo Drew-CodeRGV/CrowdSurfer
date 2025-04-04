@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ device_name }} - Admin</title>
+    <style>
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }
+      form { display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+      input[type='text'], input[type='submit'] { width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+      input[type='submit'] { background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+      input[type='submit']:hover { background: #0056b3; }
+      select { width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>{{ device_name }} Admin Management</h1>
+    <form method='post'>
+      Hostname: <input type='text' name='hostname' value='{{ current_hostname }}' required><br>
+      Change Splash Header: <input type='text' name='header' value='{{ splash_header }}'><br>
+      Redirect Mode:
+      <select name='redirect_mode'>
+        <option value='original' {{ 'selected' if redirect_mode=="original" else '' }}>Original Requested URL</option>
+        <option value='fixed' {{ 'selected' if redirect_mode=="fixed" else '' }}>Fixed URL</option>
+        <option value='none' {{ 'selected' if redirect_mode=="none" else '' }}>No Redirect</option>
+      </select><br>
+      Fixed Redirect URL (if applicable): <input type='text' name='fixed_url' value='{{ fixed_redirect_url }}'><br>
+      <input type='submit' value='Update Settings'>
+    </form>
+    <p>Total Registrations: {{ total_registrations }}</p>
+    <form method='post' action='/admin/revoke'>
+      <input type='submit' value='Revoke All Exemptions'>
+    </form>
+    <h2>Download CSV</h2>
+    <a href='/download_csv'>Download CSV</a>
+</
