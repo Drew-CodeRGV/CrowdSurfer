@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 2.3.3
+# Version: 2.3.4
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.3.3\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.3.4\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -60,6 +60,11 @@ configure_dnsmasq() {
     echo "dhcp-range=10.69.0.10,10.69.0.254,15m"
     echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1"
     echo "dhcp-option=option:router,10.69.0.1"
+    # DNS overrides for captive portal detection:
+    echo "address=/captive.apple.com/10.69.0.1"
+    echo "address=/www.apple.com/library/test/success.html/10.69.0.1"
+    echo "address=/connectivitycheck.android.com/10.69.0.1"
+    echo "address=/clients3.google.com/generate_204/10.69.0.1"
   } >> /etc/dnsmasq.conf
   systemctl restart dnsmasq
 }
@@ -90,6 +95,10 @@ if [ -f /usr/local/bin/howzit.py ]; then
   sed -i "\|^dhcp-range=10\.69\.0\.10,10\.69\.0\.254,15m\$|d" /etc/dnsmasq.conf
   sed -i "\|^dhcp-option=option:router,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
   sed -i "\|^dhcp-option=option:dns-server,8\.8\.8\.8,10\.69\.0\.1\$|d" /etc/dnsmasq.conf
+  sed -i "\|^address=/captive.apple.com/10\.69\.0\.1\$|d" /etc/dnsmasq.conf
+  sed -i "\|^address=/www.apple.com/library/test/success.html/10\.69\.0\.1\$|d" /etc/dnsmasq.conf
+  sed -i "\|^address=/connectivitycheck.android.com/10\.69\.0\.1\$|d" /etc/dnsmasq.conf
+  sed -i "\|^address=/clients3.google.com/generate_204/10\.69\.0\.1\$|d" /etc/dnsmasq.conf
   systemctl restart dnsmasq
   /sbin/iptables -t nat -F
   persist_iptables
@@ -104,7 +113,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="2.3.3"
+SCRIPT_VERSION="2.3.4"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -174,7 +183,7 @@ echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout:              $CSV_TIMEOUT sec"
 echo "  CSV Email:                $CSV_EMAIL"
 echo "  Redirect Mode:            $REDIRECT_MODE"
-[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed URL:                $FIXED_REDIRECT_URL"
+[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:                $FIXED_REDIRECT_URL"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Configuration complete."
 sleep 0.5
@@ -629,3 +638,29 @@ User=root
 
 [Install]
 WantedBy=multi-user.target"
+echo "$service_content" > /etc/systemd/system/howzit.service
+update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created using Waitress."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
+echo "Reloading systemd and enabling Howzit service..."
+systemctl daemon-reload
+systemctl enable howzit.service
+systemctl restart howzit.service
+
+persist_iptables
+update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
+echo ""
+echo -e "\033[32m-----------------------------------------\033[0m"
+echo -e "\033[32mInstallation Summary:\033[0m"
+echo "  Device Name:              $DEVICE_NAME"
+echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
+echo "  Internet Interface:       $INTERNET_INTERFACE"
+echo "  CSV Timeout:              $CSV_TIMEOUT sec"
+echo "  CSV will be emailed to:    $CSV_EMAIL"
+echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
+echo "  Lease Time:               15 minutes"
+echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
+echo "  Redirect Mode:            $REDIRECT_MODE"
+[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
+echo -e "\033[32m-----------------------------------------\033[0m"
