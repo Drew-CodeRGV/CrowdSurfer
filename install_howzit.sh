@@ -132,7 +132,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # Section: Script Update Check
 # ==============================
 print_section_header "Script Update Check"
-REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
+REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/dev/install_howzit.sh"
 SCRIPT_VERSION="3.0.0"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
