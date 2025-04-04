@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ splash_header }}</title>
+    <style>
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }
+      form { display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+      input[type='text'], input[type='email'], input[type='date'], select { width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+      input[type='submit'] { background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+      input[type='submit']:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>{{ splash_header }}</h1>
+    <form method='post' action='/?url={{ original_url }}'>
+      <input type='hidden' name='url' value='{{ original_url }}'>
+      First Name: <input type='text' name='first_name' required><br>
+      Last Name: <input type='text' name='last_name' required><br>
+      Birthday (YYYY-MM-DD): <input type='date' name='birthday' required><br>
+      Zip Code: <input type='text' name='zip_code' required><br>
+      Email: <input type='email' name='email' required><br>
+      Gender: <select name='gender'>
+                <option value='Male'>Male</option>
+                <option value='Female'>Female</option>
+                <option value='Other'>Other</option>
+                <option value='Prefer not to say'>Prefer not to say</option>
+              </select><br>
+      <input type='submit' value='Register'>
+    </form>
+</body>
+</html>
