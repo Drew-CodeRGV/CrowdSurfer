@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.1.2
+# Version: 3.1.3
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -86,17 +86,13 @@ configure_captive_interface() {
 copy_templates() {
   local tpl_dir="/usr/local/bin/templates"
   mkdir -p "$tpl_dir"
-  if [ -f "splash.html" ]; then
+  if [ ! -f "$tpl_dir/splash.html" ] && [ -f "splash.html" ]; then
     cp splash.html "$tpl_dir/"
     echo "Copied splash.html to $tpl_dir"
-  else
-    echo "Warning: splash.html not found in current directory."
   fi
-  if [ -f "admin.html" ]; then
+  if [ ! -f "$tpl_dir/admin.html" ] && [ -f "admin.html" ]; then
     cp admin.html "$tpl_dir/"
     echo "Copied admin.html to $tpl_dir"
-  else
-    echo "Warning: admin.html not found in current directory."
   fi
 }
 
@@ -146,7 +142,7 @@ if [[ "$BRANCH_CHOICE" == "2" ]]; then
 else
   REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 fi
-SCRIPT_VERSION="3.1.2"
+SCRIPT_VERSION="3.1.3"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
