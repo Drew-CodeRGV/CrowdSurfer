@@ -7,47 +7,46 @@
   \/_/\/_/   \/_____/   \/_/   \/_/   \/_____/   \/_/     \/_/
 ```
 
-Howzit is a captive portal service designed for the Raspberry Pi 4. It automatically sets up a captive portal on the built-in Ethernet (eth0) interface, routes traffic via an attached USB Ethernet adapter (eth1) or WiFi (wlan0), and provides a splash page for event registrations. User information is collected via a form, stored in a CSV file, and emailed after 5 minutes of inactivity. An admin page lets you update the splash header and view statistics with charts.
+# Howzit Captive Portal
+
+Howzit is a fully-functional captive portal solution designed for environments such as Raspberry Pi-based networks. It intercepts HTTP/HTTPS traffic on a dedicated captive portal interface and displays a customizable splash page. It also leverages DNS overrides and captive portal detection hooks to automatically trigger the portal on mobile devices.
 
 ## Features
 
-- **Automated Installation & Configuration**  
-  Installs all necessary system packages and Python dependencies on a fresh Raspberry Pi (Debian-based systems).
+- **Captive Portal Splash Page:**  
+  Displays a customizable registration page and splash screen for users connecting to the captive network.
 
-- **Network Setup & NAT**  
-  Configures eth0 with a static IP (192.168.4.1/24), enables IP forwarding, and sets up NAT with iptables. All HTTP traffic on eth0 is redirected to the captive portal.
+- **DNS Overrides for Captive Detection:**  
+  Configures DNSMasq to override known captive portal detection domains (e.g., `captive.apple.com`, `connectivitycheck.android.com`) so that connected devices are automatically redirected to the portal.
 
-- **Captive Portal with Registration Form**  
-  Provides a splash page with a customizable header ("Welcome to the event!" by default) and a registration form that collects:
-  - First Name
-  - Last Name
-  - Birthday (YYYY-MM-DD)
-  - Zip Code
-  - Email
-  - Gender
+- **Network Interface Configuration:**  
+  Configures a designated captive portal interface (default: `eth0`) with a static IP address (`10.69.0.1`) and ensures proper DHCP leasing with a gateway of `10.69.0.1`.
 
-- **CSV Management & Emailing**  
-  Saves registrations to a CSV file (named using the current date/hour and a random 4-digit number). After 5 minutes of inactivity, the CSV is emailed to `cs@drewlentz.com`, and a new CSV session starts.
+- **IPTables NAT/DNAT & Forwarding:**  
+  Sets up iptables rules to NAT outgoing traffic, redirect HTTP/HTTPS traffic to the captive portal, and allow proper forwarding between the captive and internet interfaces.
 
-- **Admin Management Page**  
-  Accessible at `/admin`, this page allows you to:
-  - Update the splash header
-  - View the total number of registrations
-  - See charts for gender breakdown (pie chart), zip code distribution (bar chart), and age groups (bar chart)
-  - Download the CSV file
+- **Flask and Waitress Backend:**  
+  Uses Flask to serve the captive portal application and Waitress as the production WSGI server.
 
-- **Autostart on Boot**  
-  A systemd service ensures that Howzit automatically starts at boot.
+- **CSV Export & Email Notifications:**  
+  Captures registration data, writes it to CSV files, and sends email notifications for registered users.
+
+## Requirements
+
+- A Debian-based system (e.g., Raspbian)
+- Root privileges for installation
+- The following packages (will be installed by the script if missing):
+  - `python3`, `python3-flask`, `python3-pandas`, `python3-matplotlib`
+  - `dnsmasq`, `net-tools`, `iptables`, `python3-pip`, `python3-waitress`
+- An available captive network interface (default: `eth0`) and an Internet interface (default: `wlan0`)
 
 ## Installation
 
-This repository contains the installation script `install_howzit.sh`. To install and run Howzit on your Raspberry Pi, follow these steps:
+1. **Download the Script:**  
+   Copy the `install_howzit.sh` script (version 3.0.0) into your system.
 
-1. **Download the Script**
-
-   Clone this repository or download the `install_howzit.sh` file.
-
-2. **Make the Script Executable**
-
+2. **Run the Script as Root:**  
+   Execute the script with root privileges:
    ```bash
-   chmod +x install_howzit.sh
+   sudo bash install_howzit.sh
+
