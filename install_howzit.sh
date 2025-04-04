@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 2.3.4
+# Version: 2.3.5
 
 # ==============================
 # ASCII Header
@@ -11,7 +11,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.3.4\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 2.3.5\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -113,7 +113,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="2.3.4"
+SCRIPT_VERSION="2.3.5"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl
@@ -291,6 +291,22 @@ CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
 
 app = Flask(DEVICE_NAME)
+
+# --- Added Captive Portal Detection ---
+@app.before_request
+def captive_portal_detection():
+    captive_hosts = [
+        "captive.apple.com",
+        "www.apple.com",
+        "connectivitycheck.android.com",
+        "clients3.google.com",
+        "www.google.com"
+    ]
+    if request.host in captive_hosts:
+        # Redirect these requests to the splash page
+        return redirect("http://10.69.0.1", code=302)
+# --- End Captive Portal Detection ---
+
 csv_lock = threading.Lock()
 current_csv_filename = None
 last_submission_time = None
