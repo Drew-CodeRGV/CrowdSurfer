@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.1.0
+# Version: 3.1.2
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -146,7 +146,7 @@ if [[ "$BRANCH_CHOICE" == "2" ]]; then
 else
   REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 fi
-SCRIPT_VERSION="3.1.0"
+SCRIPT_VERSION="3.1.2"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
@@ -362,7 +362,7 @@ ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INT
 ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80'
 ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j REDIRECT --to-ports 80'
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
-ExecStart=${WAITRESS_PATH} --listen=10.69.0.1:80 howzit:app
+ExecStart=/usr/bin/waitress-serve --listen=0.0.0.0:80 howzit:app
 Restart=always
 RestartSec=5
 User=root
