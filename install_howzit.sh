@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.2.5
+# Version: 3.2.6
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.2.5\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.0.3\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -86,17 +86,13 @@ configure_captive_interface() {
 copy_templates() {
   local tpl_dir="/usr/local/bin/templates"
   mkdir -p "$tpl_dir"
-  if [ -f "splash.html" ]; then
+  if [ ! -f "$tpl_dir/splash.html" ] && [ -f "splash.html" ]; then
     cp splash.html "$tpl_dir/"
     echo "Copied splash.html to $tpl_dir"
-  else
-    echo "Warning: splash.html not found in current directory."
   fi
-  if [ -f "admin.html" ]; then
+  if [ ! -f "$tpl_dir/admin.html" ] && [ -f "admin.html" ]; then
     cp admin.html "$tpl_dir/"
     echo "Copied admin.html to $tpl_dir"
-  else
-    echo "Warning: admin.html not found in current directory."
   fi
 }
 
@@ -136,14 +132,23 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # Section: Script Update Check
 # ==============================
 print_section_header "Script Update Check"
-REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="3.2.5"
+echo "Which version would you like to check for updates?"
+echo "  1) Main (stable)"
+echo "  2) Dev (testing)"
+read -p "Enter option number [1]: " BRANCH_CHOICE
+BRANCH_CHOICE=${BRANCH_CHOICE:-1}
+if [[ "$BRANCH_CHOICE" == "2" ]]; then
+  REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/dev/install_howzit.sh"
+else
+  REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
+fi
+SCRIPT_VERSION="3.2.6"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
   fi
   REMOTE_SCRIPT=$(curl -fsSL "$REMOTE_URL") || true
-  REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^SCRIPT_VERSION=' | head -n 1 | cut -d'=' -f2 | tr -d '"')
+  REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep '^SCRIPT_VERSION=' | head -n 1 | cut -d'=' -f2 | tr -d '"' )
   if [ -n "$REMOTE_VERSION" ] && [ "$REMOTE_VERSION" != "$SCRIPT_VERSION" ]; then
     echo "New version available: $REMOTE_VERSION (current: $SCRIPT_VERSION)"
     read -p "Download and install new version automatically? (y/n) [y]: " update_choice
@@ -307,11 +312,210 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 print_section_header "Write Captive Portal Application"
 cat > /usr/local/bin/howzit.py << 'EOF'
 #!/usr/bin/env python3
-# This file contains the Howzit captive portal server with image upload support.
-# (Truncated for brevity. Full version available in previous steps.)
+import os
+import threading
+import time
+import random
+import smtplib
+import csv
+import subprocess
+import re
+from datetime import datetime
+from flask import Flask, request, send_file, redirect, render_template
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+import pandas as pd
+import socket
 
-# Full code as provided in previous message.
+DEVICE_NAME = os.environ.get("DEVICE_NAME", "Howzit01")
+CSV_TIMEOUT = int(os.environ.get("CSV_TIMEOUT", "300"))
+REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")
+FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
+CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
+CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
+UPLOAD_FOLDER = "/var/lib/howzit/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+app = Flask(DEVICE_NAME, template_folder="/usr/local/bin/templates")
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+csv_lock = threading.Lock()
+current_csv_filename = None
+last_submission_time = None
+email_timer = None
+splash_header = "Welcome to the event!"
+
+registered_clients = {}
+
+def update_hosts_file(new_hostname):
+    try:
+        short_hostname = new_hostname.split(".")[0]
+        entry = "127.0.0.1   " + new_hostname + " " + short_hostname + "\n"
+        with open("/etc/hosts", "r") as f:
+            hosts = f.readlines()
+        if not any(new_hostname in line for line in hosts):
+            with open("/etc/hosts", "a") as f:
+                f.write(entry)
+    except Exception as e:
+        print("Error updating /etc/hosts:", e)
+
+def get_mac(ip):
+    try:
+        output = subprocess.check_output(["ip", "neigh", "show", ip]).decode("utf-8")
+        match = re.search(r"lladdr\s+(([0-9a-f]{2}:){5}[0-9a-f]{2})", output, re.I)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    return None
+
+def add_exemption(mac):
+    subprocess.call(f"/sbin/iptables -t nat -I PREROUTING -i {CP_INTERFACE} -m mac --mac-source {mac} -p tcp --dport 80 -j RETURN", shell=True)
+    subprocess.call(f"/sbin/iptables -t nat -I PREROUTING -i {CP_INTERFACE} -m mac --mac-source {mac} -p tcp --dport 443 -j REDIRECT --to-ports 80", shell=True)
+
+def schedule_exemption_removal(mac, key, duration=600):
+    def remove_rule():
+        subprocess.call(f"/sbin/iptables -t nat -D PREROUTING -i {CP_INTERFACE} -m mac --mac-source {mac} -p tcp --dport 80 -j RETURN", shell=True)
+        subprocess.call(f"/sbin/iptables -t nat -D PREROUTING -i {CP_INTERFACE} -m mac --mac-source {mac} -p tcp --dport 443 -j REDIRECT --to-ports 80", shell=True)
+        registered_clients.pop(key, None)
+    threading.Timer(duration, remove_rule).start()
+
+def generate_csv_filename():
+    now = datetime.now()
+    rand = random.randint(1000, 9999)
+    return now.strftime("%Y-%m-%d-%H") + "-" + str(rand) + ".csv"
+
+def init_csv():
+    global current_csv_filename
+    current_csv_filename = generate_csv_filename()
+    with open(current_csv_filename, "w", newline="") as f:
+        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date", "Time"])
+
+def append_to_csv(data):
+    global last_submission_time, email_timer
+    with csv_lock:
+        with open(current_csv_filename, "a", newline="") as f:
+            csv.writer(f).writerow(data)
+    last_submission_time = time.time()
+    if email_timer:
+        email_timer.cancel()
+    email_timer = threading.Timer(CSV_TIMEOUT, send_csv_via_email)
+    email_timer.start()
+
+def send_csv_via_email():
+    global current_csv_filename
+    with csv_lock, open(current_csv_filename, "rb") as f:
+        content = f.read()
+    msg = MIMEMultipart()
+    msg["Subject"] = "Howzit CSV Submission"
+    msg["From"] = "no-reply@example.com"
+    msg["To"] = CSV_EMAIL
+    msg.attach(MIMEText("Attached is the CSV file for the session."))
+    part = MIMEApplication(content, Name=current_csv_filename)
+    part["Content-Disposition"] = f"attachment; filename=\"{current_csv_filename}\""
+    msg.attach(part)
+    try:
+        s = smtplib.SMTP("localhost")
+        s.send_message(msg)
+        s.quit()
+    except Exception as e:
+        print("Email error:", e)
+    init_csv()
+
+@app.route("/", methods=["GET", "POST"])
+def splash():
+    logo_path = None
+    for f in os.listdir(app.config['UPLOAD_FOLDER']):
+        if f.startswith('logo'):
+            logo_path = f"/uploads/{f}"
+    original_url = request.args.get("url", "")
+    global logo_filename
+    logo_path = f"/uploads/{logo_filename}" if logo_filename else None
+    if request.method == "POST":
+        original_url = request.form.get("url", original_url)
+        client_ip = request.remote_addr
+        mac = get_mac(client_ip)
+        email = request.form.get("email")
+        key = f"{mac}_{email}" if mac else f"unknown_{email}"
+        if key not in registered_clients:
+            registered_clients[key] = time.time() + 600
+            if mac:
+                add_exemption(mac)
+                schedule_exemption_removal(mac, key)
+        now = datetime.now()
+        append_to_csv([
+            request.form.get("first_name"),
+            request.form.get("last_name"),
+            request.form.get("birthday"),
+            request.form.get("zip_code"),
+            email,
+            mac if mac else "unknown",
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M:%S")
+        ])
+        if REDIRECT_MODE == "original" and original_url:
+            return redirect(original_url)
+        elif REDIRECT_MODE == "fixed" and FIXED_REDIRECT_URL:
+            return redirect(FIXED_REDIRECT_URL)
+        return "Registration complete."
+    return render_template("splash.html", splash_header=splash_header, original_url=original_url, logo_path=logo_path)
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    logo_path = None
+    for f in os.listdir(app.config['UPLOAD_FOLDER']):
+        if f.startswith('logo'):
+            logo_path = f"/uploads/{f}"
+    global splash_header, logo_filename
+    hostname = socket.gethostname()
+    msg = ""
+    if request.method == "POST":
+        if "hostname" in request.form:
+            new_hostname = request.form.get("hostname")
+            os.system(f"hostnamectl set-hostname {new_hostname}")
+            update_hosts_file(new_hostname)
+            hostname = new_hostname
+        splash_header = request.form.get("header", splash_header)
+        mode = request.form.get("redirect_mode")
+        global REDIRECT_MODE, FIXED_REDIRECT_URL
+        if mode:
+            REDIRECT_MODE = mode
+            FIXED_REDIRECT_URL = request.form.get("fixed_url", "") if mode == "fixed" else ""
+        if "logo" in request.files:
+            logo = request.files["logo"]
+            if logo:
+                filename = "logo.png"
+                logo.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+                logo_filename = filename
+    try:
+        df = pd.read_csv(current_csv_filename)
+    except:
+        df = pd.DataFrame()
+    total = len(df)
+    logo_path = f"/uploads/{logo_filename}" if logo_filename else None
+    return render_template("admin.html", device_name=DEVICE_NAME, current_hostname=hostname,
+                           splash_header=splash_header, redirect_mode=REDIRECT_MODE,
+                           fixed_redirect_url=FIXED_REDIRECT_URL, total_registrations=total,
+                           logo_path=logo_path)
+
+@app.route("/admin/revoke", methods=["POST"])
+def revoke():
+    subprocess.call("/sbin/iptables -F", shell=True)
+    return "All exemptions revoked."
+
+@app.route("/download_csv")
+def download_csv():
+    return send_file(current_csv_filename, as_attachment=True)
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    return send_file(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
+init_csv()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=80)
 EOF
 
 chmod +x /usr/local/bin/howzit.py
@@ -353,7 +557,7 @@ ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INT
 ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80'
 ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j REDIRECT --to-ports 80'
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
-ExecStart=${WAITRESS_PATH} --listen=10.69.0.1:80 howzit:app
+ExecStart=/usr/bin/waitress-serve --listen=0.0.0.0:80 howzit:app
 Restart=always
 RestartSec=5
 User=root
