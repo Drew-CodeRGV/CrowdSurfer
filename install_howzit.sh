@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.1.6
+# Version: 3.2.1
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.1.6\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.2.1\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -60,6 +60,10 @@ configure_dnsmasq() {
   sed -i '/^dhcp-range=/d' /etc/dnsmasq.conf || true
   sed -i '/^interface=/d' /etc/dnsmasq.conf || true
   {
+      echo "address=/captive.apple.com/10.69.0.1"
+      echo "address=/www.apple.com/library/test/success.html/10.69.0.1"
+      echo "address=/connectivitycheck.android.com/10.69.0.1"
+      echo "address=/clients3.google.com/generate_204/10.69.0.1"
     echo "interface=${CP_INTERFACE}"
     echo "dhcp-range=10.69.0.10,10.69.0.254,15m"
     echo "dhcp-option=option:dns-server,8.8.8.8,10.69.0.1"
@@ -142,7 +146,7 @@ if [[ "$BRANCH_CHOICE" == "2" ]]; then
 else
   REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 fi
-SCRIPT_VERSION="3.1.6"
+SCRIPT_VERSION="3.2.1"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
@@ -334,8 +338,8 @@ REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")
 FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
 CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
-UPLOAD_FOLDER = "/usr/local/bin/templates/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+UPLOAD_FOLDER = "/var/lib/howzit/uploads"
+os.makedirs("/var/lib/howzit/uploads", exist_ok=True)
 
 app = Flask(DEVICE_NAME, template_folder="/usr/local/bin/templates")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
