@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.1.3
+# Version: 3.1.4
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -142,7 +142,7 @@ if [[ "$BRANCH_CHOICE" == "2" ]]; then
 else
   REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 fi
-SCRIPT_VERSION="3.1.3"
+SCRIPT_VERSION="3.1.4"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
