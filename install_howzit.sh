@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.0.3\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.2.6\033[0m\n"
 
 # ==============================
 # Utility Functions
