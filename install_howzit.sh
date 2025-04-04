@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version 3.0.3\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.0.3\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -207,7 +207,7 @@ echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout:              $CSV_TIMEOUT sec"
 echo "  CSV Email:                $CSV_EMAIL"
 echo "  Redirect Mode:            $REDIRECT_MODE"
-[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:                $FIXED_REDIRECT_URL"
+[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
 echo ""
 update_status $CURRENT_STEP $TOTAL_STEPS "Configuration complete."
 sleep 0.5
@@ -323,8 +323,8 @@ FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
 CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
 
-# Use the templates from /usr/local/bin/templates
-app = Flask(DEVICE_NAME, template_folder="templates")
+# Updated Flask instantiation to use the templates from /usr/local/bin/templates
+app = Flask(DEVICE_NAME, template_folder="/usr/local/bin/templates")
 
 # --- Captive Portal Detection Hook ---
 @app.before_request
