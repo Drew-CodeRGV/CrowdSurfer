@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.2.6
+# Version: 3.2.7
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,8 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.2.6\033[0m\n"
+echo -e "\033[33mVersion: 3.2.7\033[0m"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.2.7\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -66,6 +67,9 @@ configure_dnsmasq() {
     echo "dhcp-option=option:router,10.69.0.1"
     # DNS overrides for captive portal detection:
     echo "address=/captive.apple.com/10.69.0.1"
+    echo "address=/www.apple.com/library/test/success.html/10.69.0.1"
+    echo "address=/connectivitycheck.android.com/10.69.0.1"
+    echo "address=/clients3.google.com/generate_204/10.69.0.1"
     echo "address=/www.apple.com/library/test/success.html/10.69.0.1"
     echo "address=/connectivitycheck.android.com/10.69.0.1"
     echo "address=/clients3.google.com/generate_204/10.69.0.1"
@@ -142,7 +146,7 @@ if [[ "$BRANCH_CHOICE" == "2" ]]; then
 else
   REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
 fi
-SCRIPT_VERSION="3.2.6"
+SCRIPT_VERSION="3.2.7"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
