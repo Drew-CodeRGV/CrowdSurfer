@@ -326,8 +326,7 @@ def add_exemption(mac):
                     " -p tcp --dport 80 -j RETURN", shell=True)
     subprocess.call("/sbin/iptables -t nat -I PREROUTING -i " + CP_INTERFACE +
                     " -m mac --mac-source " + mac +
-                    " -p tcp --mac-source " + mac +
-                    " -p tcp --dport 443 -j RETURN", shell=True)
+                    " -p tcp --dport 443 -j REDIRECT --to-ports 80", shell=True)
 
 def schedule_exemption_removal(mac, key, duration=600):
     def remove_rule():
@@ -336,7 +335,7 @@ def schedule_exemption_removal(mac, key, duration=600):
                         " -p tcp --dport 80 -j RETURN", shell=True)
         subprocess.call("/sbin/iptables -t nat -D PREROUTING -i " + CP_INTERFACE +
                         " -m mac --mac-source " + mac +
-                        " -p tcp --dport 443 -j RETURN", shell=True)
+                        " -p tcp --dport 443 -j REDIRECT --to-ports 80", shell=True)
         registered_clients.pop(key, None)
     timer = threading.Timer(duration, remove_rule)
     timer.start()
@@ -613,7 +612,7 @@ ExecStartPre=/bin/sh -c \"echo 1 > /proc/sys/net/ipv4/ip_forward\"
 ExecStartPre=/sbin/iptables -t nat -F
 ExecStartPre=/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE
 ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j REDIRECT --to-ports 80
 ExecStartPre=/sbin/iptables -I FORWARD -i ${CP_INTERFACE} -o ${INTERNET_INTERFACE} -j ACCEPT
 ExecStartPre=/sbin/iptables -I FORWARD -o ${CP_INTERFACE} -j ACCEPT
 ExecStartPre=/sbin/iptables -I FORWARD -p icmp -j ACCEPT
@@ -621,7 +620,7 @@ ExecStartPre=/sbin/iptables -I FORWARD -i ${INTERNET_INTERFACE} -o ${CP_INTERFAC
 # Reapply NAT rules after service starts
 ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A POSTROUTING -o ${INTERNET_INTERFACE} -j MASQUERADE'
 ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 80 -j DNAT --to-destination 10.69.0.1:80'
-ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j DNAT --to-destination 10.69.0.1:80'
+ExecStartPost=/bin/sh -c '/sbin/iptables -t nat -A PREROUTING -i ${CP_INTERFACE} -p tcp --dport 443 -j REDIRECT --to-ports 80'
 ExecStartPre=/bin/sh -c 'test -f /etc/iptables/howzit.rules && /sbin/iptables-restore < /etc/iptables/howzit.rules'
 ExecStart=${WAITRESS_PATH} --listen=10.69.0.1:80 howzit:app
 Restart=always
@@ -630,29 +629,3 @@ User=root
 
 [Install]
 WantedBy=multi-user.target"
-echo "$service_content" > /etc/systemd/system/howzit.service
-update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created using Waitress."
-sleep 0.5
-CURRENT_STEP=$((CURRENT_STEP+1))
-
-echo "Reloading systemd and enabling Howzit service..."
-systemctl daemon-reload
-systemctl enable howzit.service
-systemctl restart howzit.service
-
-persist_iptables
-update_status $TOTAL_STEPS $TOTAL_STEPS "Installation complete. Howzit is now running."
-echo ""
-echo -e "\033[32m-----------------------------------------\033[0m"
-echo -e "\033[32mInstallation Summary:\033[0m"
-echo "  Device Name:              $DEVICE_NAME"
-echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
-echo "  Internet Interface:       $INTERNET_INTERFACE"
-echo "  CSV Timeout:              $CSV_TIMEOUT sec"
-echo "  CSV will be emailed to:    $CSV_EMAIL"
-echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
-echo "  Lease Time:               15 minutes"
-echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
-echo "  Redirect Mode:            $REDIRECT_MODE"
-[ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
-echo -e "\033[32m-----------------------------------------\033[0m"
