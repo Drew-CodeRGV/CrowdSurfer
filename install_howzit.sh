@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.3.3
+# Version: 3.3.4
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.3\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.4\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -86,18 +86,126 @@ configure_captive_interface() {
 copy_templates() {
   local tpl_dir="/usr/local/bin/templates"
   mkdir -p "$tpl_dir"
-  if [ -f "splash.html" ]; then
-    cp splash.html "$tpl_dir/"
-    echo "Copied splash.html to $tpl_dir"
-  else
-    echo "Warning: splash.html not found in current directory."
-  fi
-  if [ -f "admin.html" ]; then
-    cp admin.html "$tpl_dir/"
-    echo "Copied admin.html to $tpl_dir"
-  else
-    echo "Warning: admin.html not found in current directory."
-  fi
+  
+  # Create splash.html
+  cat > "$tpl_dir/splash.html" << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ splash_header }}</title>
+    <style>
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }
+      form { display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+      input[type='text'], input[type='email'], input[type='date'], select { width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+      input[type='submit'] { background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+      input[type='submit']:hover { background: #0056b3; }
+      img.logo { max-width: 200px; margin-bottom: 20px; }
+      .success-message { background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    {% if logo_url %}
+        <img src="{{ logo_url }}" alt="Logo" class="logo">
+    {% endif %}
+    <h1>{{ splash_header }}</h1>
+    
+    {% if registration_complete %}
+        <div class="success-message">
+            <h2>Thank you for registering!</h2>
+            {% if redirect_url %}
+                <p>You will be redirected in <span id="countdown">5</span> seconds...</p>
+                <script>
+                    let seconds = 5;
+                    const countdown = document.getElementById('countdown');
+                    const timer = setInterval(function() {
+                        seconds--;
+                        countdown.textContent = seconds;
+                        if (seconds <= 0) {
+                            clearInterval(timer);
+                            window.location.href = "{{ redirect_url }}";
+                        }
+                    }, 1000);
+                </script>
+            {% else %}
+                <p>You are now connected to the internet.</p>
+            {% endif %}
+        </div>
+    {% else %}
+        <form method="post" action="/?url={{ original_url }}">
+          <input type="hidden" name="url" value="{{ original_url }}">
+          First Name: <input type="text" name="first_name" required><br>
+          Last Name: <input type="text" name="last_name" required><br>
+          Birthday (YYYY-MM-DD): <input type="date" name="birthday" required><br>
+          Zip Code: <input type="text" name="zip_code" required><br>
+          Email: <input type="email" name="email" required><br>
+          Gender: <select name="gender">
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select><br>
+          <input type="submit" value="Enter Drawing">
+        </form>
+    {% endif %}
+</body>
+</html>
+EOF
+  
+  # Create admin.html
+  cat > "$tpl_dir/admin.html" << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ device_name }} - Admin</title>
+    <style>
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }
+      form { display: inline-block; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-bottom: 20px; }
+      input[type='text'], input[type='submit'], input[type='file'] { width: 300px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+      input[type='submit'] { background: #007bff; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+      input[type='submit']:hover { background: #0056b3; }
+      select { width: 320px; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+      img.logo-preview { max-width: 200px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto; }
+      .message { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
+      .error { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>{{ device_name }} Admin Management</h1>
+
+    {% if msg %}
+    <div class="message">{{ msg }}</div>
+    {% endif %}
+
+    {% if logo_url %}
+        <img src="{{ logo_url }}" alt="Logo Preview" class="logo-preview">
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+      Hostname: <input type="text" name="hostname" value="{{ current_hostname }}" required><br>
+      Change Splash Header: <input type="text" name="header" value="{{ splash_header }}"><br>
+      Redirect Mode:
+      <select name="redirect_mode">
+        <option value="original" {{ 'selected' if redirect_mode=="original" else '' }}>Original Requested URL</option>
+        <option value="fixed" {{ 'selected' if redirect_mode=="fixed" else '' }}>Fixed URL</option>
+        <option value="none" {{ 'selected' if redirect_mode=="none" else '' }}>No Redirect</option>
+      </select><br>
+      Fixed Redirect URL (if applicable): <input type="text" name="fixed_url" value="{{ fixed_redirect_url }}"><br>
+      Upload Logo: <input type="file" name="logo" accept="image/*"><br>
+      <input type="submit" value="Update Settings">
+    </form>
+
+    <p>Total Registrations: {{ total_registrations }}</p>
+    <form method="post" action="/admin/revoke">
+      <input type="submit" value="Revoke All Exemptions">
+    </form>
+
+    <h2>Download CSV</h2>
+    <a href="/download_csv">Download CSV</a>
+</body>
+</html>
+EOF
+
+  echo "Created template files in $tpl_dir"
 }
 
 # ==============================
@@ -137,7 +245,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="3.3.3"
+SCRIPT_VERSION="3.3.4"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
@@ -264,7 +372,7 @@ print_section_header "Package Installation"
 echo "Updating package lists..."
 apt-get update || true
 echo "Installing required packages..."
-install_packages "python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip"
+install_packages "python3" "python3-flask" "python3-pandas" "python3-matplotlib" "dnsmasq" "net-tools" "iptables" "python3-pip" "python3-werkzeug"
 echo "Installing Waitress via apt-get..."
 apt-get install -y python3-waitress || true
 # Determine Waitress path
@@ -298,6 +406,16 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # ==============================
+# Section: Create Upload Directory
+# ==============================
+print_section_header "Create Upload Directory"
+mkdir -p /usr/local/bin/static
+chmod 755 /usr/local/bin/static
+update_status $CURRENT_STEP $TOTAL_STEPS "Static and upload directories created."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
+# ==============================
 # Section: Write Captive Portal Python Application
 # ==============================
 print_section_header "Write Captive Portal Application"
@@ -307,7 +425,7 @@ import os
 os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
 import time, random, threading, smtplib, csv, subprocess, re
 from datetime import datetime
-from flask import Flask, request, send_file, redirect, render_template
+from flask import Flask, request, send_file, redirect, render_template, url_for, send_from_directory
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -315,6 +433,7 @@ import matplotlib
 matplotlib.use("Agg")
 import pandas as pd
 import socket
+import werkzeug.utils
 
 DEVICE_NAME = os.environ.get("DEVICE_NAME", "Howzit01")
 CSV_TIMEOUT = int(os.environ.get("CSV_TIMEOUT", "300"))
@@ -323,11 +442,21 @@ FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
 CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
 
+# Create upload folder for logo
+UPLOAD_FOLDER = '/usr/local/bin/static'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 # Updated Flask instantiation to use the templates from /usr/local/bin/templates
-app = Flask(DEVICE_NAME, template_folder="/usr/local/bin/templates")
+app = Flask(DEVICE_NAME, 
+           template_folder="/usr/local/bin/templates",
+           static_folder=UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 # --- Global variables ---
 splash_header = "Welcome to the event!"
+logo_filename = None
 
 # --- Captive Portal Detection Hook ---
 @app.before_request
@@ -409,7 +538,7 @@ def init_csv():
     global current_csv_filename, last_submission_time, email_timer
     current_csv_filename = generate_csv_filename()
     with open(current_csv_filename, "w", newline="") as f:
-        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date Registered", "Time Registered"])
+        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender", "MAC", "Date Registered", "Time Registered"])
     last_submission_time = time.time()
 
 def append_to_csv(data):
@@ -444,15 +573,26 @@ def send_csv_via_email():
         print("Error sending email:", e)
     init_csv()
 
-@app.route("/", methods=["GET", "POST"])
+def allowed_file(filename):
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/', methods=['GET', 'POST'])
 def splash():
     global splash_header
-    original_url = request.args.get("url", "")
-    if request.method == "POST":
-        original_url = request.form.get("url", original_url)
+    original_url = request.args.get('url', '')
+    
+    # Add logo_url to context if logo exists
+    logo_url = None
+    if logo_filename:
+        logo_url = f"/static/{logo_filename}"
+    
+    if request.method == 'POST':
+        original_url = request.form.get('url', original_url)
         client_ip = request.remote_addr
         mac = get_mac(client_ip)
-        email = request.form.get("email")
+        email = request.form.get('email')
         key = ((mac or "unknown") + "_" + (email or "noemail"))
         if key not in registered_clients:
             registered_clients[key] = time.time() + 600
@@ -462,41 +602,50 @@ def splash():
         now = datetime.now()
         reg_date = now.strftime("%Y-%m-%d")
         reg_time = now.strftime("%H:%M:%S")
-        append_to_csv([request.form.get("first_name"),
-                       request.form.get("last_name"),
-                       request.form.get("birthday"),
-                       request.form.get("zip_code"),
+        
+        # Add gender to the data collection
+        gender = request.form.get('gender', 'Not specified')
+        
+        append_to_csv([request.form.get('first_name'),
+                       request.form.get('last_name'),
+                       request.form.get('birthday'),
+                       request.form.get('zip_code'),
                        email,
+                       gender,
                        mac if mac else "unknown",
                        reg_date,
                        reg_time])
+        
         if REDIRECT_MODE == "original" and original_url:
             target_url = original_url
         elif REDIRECT_MODE == "fixed" and FIXED_REDIRECT_URL:
             target_url = FIXED_REDIRECT_URL
         else:
             target_url = ""
-        return render_template("splash.html",
-                               registration_complete=True,
-                               redirect_url=target_url,
-                               splash_header=splash_header,
-                               original_url=original_url)
+            
+        return render_template('splash.html',
+                              registration_complete=True,
+                              redirect_url=target_url,
+                              splash_header=splash_header,
+                              original_url=original_url,
+                              logo_url=logo_url)
     else:
-        return render_template("splash.html",
-                               registration_complete=False,
-                               splash_header=splash_header,
-                               original_url=original_url)
+        return render_template('splash.html',
+                              registration_complete=False,
+                              splash_header=splash_header,
+                              original_url=original_url,
+                              logo_url=logo_url)
 
-@app.route("/admin", methods=["GET", "POST"])
+@app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
+    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL, logo_filename
     
     current_hostname = socket.gethostname()
     msg = ""
     
-    if request.method == "POST":
-        if "hostname" in request.form:
-            new_hostname = request.form.get("hostname")
+    if request.method == 'POST':
+        if 'hostname' in request.form:
+            new_hostname = request.form.get('hostname')
             if new_hostname and new_hostname != current_hostname:
                 try:
                     os.system("hostnamectl set-hostname " + new_hostname)
@@ -505,19 +654,39 @@ def admin():
                 except Exception as e:
                     msg += "Error updating hostname: " + str(e) + ". "
         
-        if "header" in request.form:
-            new_header = request.form.get("header")
+        if 'header' in request.form:
+            new_header = request.form.get('header')
             if new_header:
                 splash_header = new_header
                 msg += "Splash header updated successfully. "
         
-        if "redirect_mode" in request.form:
-            REDIRECT_MODE = request.form.get("redirect_mode")
+        if 'redirect_mode' in request.form:
+            REDIRECT_MODE = request.form.get('redirect_mode')
             if REDIRECT_MODE == "fixed":
-                FIXED_REDIRECT_URL = request.form.get("fixed_url", "")
+                FIXED_REDIRECT_URL = request.form.get('fixed_url', '')
             else:
                 FIXED_REDIRECT_URL = ""
-            msg += "Redirect settings updated."
+            msg += "Redirect settings updated. "
+        
+        # Handle logo upload
+        if 'logo' in request.files:
+            file = request.files['logo']
+            if file.filename != '':
+                if allowed_file(file.filename):
+                    # Use secure filename function to avoid potential security issues
+                    secure_filename = werkzeug.utils.secure_filename(file.filename)
+                    # Add timestamp to filename to avoid caching issues
+                    timestamp = int(time.time())
+                    logo_filename = f"{timestamp}_{secure_filename}"
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], logo_filename))
+                    msg += "Logo uploaded successfully. "
+                else:
+                    msg += "Invalid file format. Please upload a .png, .jpg, .jpeg, or .gif file. "
+    
+    # Add logo_url to context if logo exists
+    logo_url = None
+    if logo_filename:
+        logo_url = f"/static/{logo_filename}"
     
     try:
         df = pd.read_csv(current_csv_filename)
@@ -525,16 +694,21 @@ def admin():
     except Exception:
         total_registrations = 0
     
-    return render_template("admin.html",
-                           device_name=DEVICE_NAME,
-                           current_hostname=current_hostname,
-                           splash_header=splash_header,
-                           redirect_mode=REDIRECT_MODE,
-                           fixed_redirect_url=FIXED_REDIRECT_URL,
-                           total_registrations=total_registrations,
-                           msg=msg)
+    return render_template('admin.html',
+                          device_name=DEVICE_NAME,
+                          current_hostname=current_hostname,
+                          splash_header=splash_header,
+                          redirect_mode=REDIRECT_MODE,
+                          fixed_redirect_url=FIXED_REDIRECT_URL,
+                          total_registrations=total_registrations,
+                          msg=msg,
+                          logo_url=logo_url)
 
-@app.route("/admin/revoke", methods=["POST"])
+@app.route('/static/<filename>')
+def serve_static(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/admin/revoke', methods=['POST'])
 def revoke_leases():
     leases_file = "/var/lib/misc/dnsmasq.leases"
     blocked_ips = []
@@ -556,7 +730,7 @@ def revoke_leases():
         subprocess.call("/sbin/iptables -A CAPTIVE_BLOCK -s " + ip + " -j DROP", shell=True)
     return "Revoked exemptions for: " + ", ".join(blocked_ips)
 
-@app.route("/download_csv")
+@app.route('/download_csv')
 def download_csv():
     return send_file(current_csv_filename, as_attachment=True)
 
@@ -639,3 +813,7 @@ echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
 echo "  Redirect Mode:            $REDIRECT_MODE"
 [ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
 echo -e "\033[32m-----------------------------------------\033[0m"
+
+
+
+      
