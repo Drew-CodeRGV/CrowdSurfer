@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.3.4
+# Version: 3.3.5
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.4\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.5\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -81,14 +81,56 @@ configure_captive_interface() {
 }
 
 # ==============================
-# Copy Local Templates Function
+# Check Local Files Function
 # ==============================
-copy_templates() {
+check_local_files() {
+  local tpl_dir="/usr/local/bin/templates"
+  local app_dir="/usr/local/bin"
+  local updated=false
+
+  mkdir -p "$tpl_dir"
+  
+  # Check for splash.html
+  if [ -f "splash.html" ]; then
+    echo "Found splash.html in current directory. Will use this instead of default."
+    cp "splash.html" "$tpl_dir/"
+    updated=true
+  fi
+
+  # Check for admin.html
+  if [ -f "admin.html" ]; then
+    echo "Found admin.html in current directory. Will use this instead of default."
+    cp "admin.html" "$tpl_dir/"
+    updated=true
+  fi
+
+  # Check for howzit.py
+  if [ -f "howzit.py" ]; then
+    echo "Found howzit.py in current directory. Will use this instead of default."
+    cp "howzit.py" "$app_dir/"
+    chmod +x "$app_dir/howzit.py"
+    updated=true
+  fi
+
+  if [ "$updated" = true ]; then
+    echo -e "\033[32mLocal files have been used for installation.\033[0m"
+    return 0
+  else
+    echo "No local template or application files found. Using defaults."
+    return 1
+  fi
+}
+
+# ==============================
+# Copy Default Templates Function
+# ==============================
+create_default_templates() {
   local tpl_dir="/usr/local/bin/templates"
   mkdir -p "$tpl_dir"
   
-  # Create splash.html
-  cat > "$tpl_dir/splash.html" << 'EOF'
+  # Create splash.html if it doesn't exist
+  if [ ! -f "$tpl_dir/splash.html" ]; then
+    cat > "$tpl_dir/splash.html" << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -150,9 +192,11 @@ copy_templates() {
 </body>
 </html>
 EOF
+  fi
   
-  # Create admin.html
-  cat > "$tpl_dir/admin.html" << 'EOF'
+  # Create admin.html if it doesn't exist
+  if [ ! -f "$tpl_dir/admin.html" ]; then
+    cat > "$tpl_dir/admin.html" << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -204,14 +248,15 @@ EOF
 </body>
 </html>
 EOF
+  fi
 
-  echo "Created template files in $tpl_dir"
+  echo "Template files created in $tpl_dir"
 }
 
 # ==============================
 # Total Steps
 # ==============================
-TOTAL_STEPS=11
+TOTAL_STEPS=12
 CURRENT_STEP=1
 
 # ==============================
@@ -245,7 +290,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="3.3.4"
+SCRIPT_VERSION="3.3.5"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
@@ -274,6 +319,15 @@ check_for_update() {
 }
 check_for_update
 update_status $CURRENT_STEP $TOTAL_STEPS "Script update check complete."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
+# ==============================
+# Section: Local File Check 
+# ==============================
+print_section_header "Local File Check"
+check_local_files
+update_status $CURRENT_STEP $TOTAL_STEPS "Local file check complete."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -397,21 +451,16 @@ sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
 # ==============================
-# Section: Copy Templates
+# Section: Create Templates/Static Directories
 # ==============================
-print_section_header "Copy Templates"
-copy_templates
-update_status $CURRENT_STEP $TOTAL_STEPS "Templates copied."
-sleep 0.5
-CURRENT_STEP=$((CURRENT_STEP+1))
-
-# ==============================
-# Section: Create Upload Directory
-# ==============================
-print_section_header "Create Upload Directory"
+print_section_header "Create Directories and Templates"
+# Create static directory
 mkdir -p /usr/local/bin/static
 chmod 755 /usr/local/bin/static
-update_status $CURRENT_STEP $TOTAL_STEPS "Static and upload directories created."
+
+# Create default templates if they don't already exist
+create_default_templates
+update_status $CURRENT_STEP $TOTAL_STEPS "Directories and templates created."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
@@ -419,8 +468,11 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # Section: Write Captive Portal Python Application
 # ==============================
 print_section_header "Write Captive Portal Application"
-cat > /usr/local/bin/howzit.py << 'EOF'
+# Only write the default application if there's no custom one
+if [ ! -f "/usr/local/bin/howzit.py" ]; then
+  cat > /usr/local/bin/howzit.py << 'EOF'
 #!/usr/bin/env python3
+# Version: 3.3.5
 import os
 os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
 import time, random, threading, smtplib, csv, subprocess, re
@@ -482,7 +534,7 @@ registered_clients = {}
 def update_hosts_file(new_hostname):
     try:
         short_hostname = new_hostname.split(".")[0]
-        entry = "127.0.0.1   " + new_hostname + " " + short_hostname + "\n"
+        entry = "127.0.0.1   " + new_hostname +" " + short_hostname + "\n"
         with open("/etc/hosts", "r") as f:
             hosts = f.readlines()
         if not any(new_hostname in line for line in hosts):
@@ -741,7 +793,12 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
 EOF
 
-chmod +x /usr/local/bin/howzit.py
+  chmod +x /usr/local/bin/howzit.py
+  echo "Default application written."
+else
+  echo "Using custom application script."
+fi
+
 update_status $CURRENT_STEP $TOTAL_STEPS "Application written."
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
@@ -792,6 +849,155 @@ update_status $CURRENT_STEP $TOTAL_STEPS "Systemd service created using Waitress
 sleep 0.5
 CURRENT_STEP=$((CURRENT_STEP+1))
 
+# ==============================
+# Section: Create Update Script
+# ==============================
+print_section_header "Create Update Script"
+cat > /usr/local/bin/update_howzit.sh << 'EOF'
+#!/bin/bash
+# update_howzit.sh
+# Version: 1.0.0
+# This script checks for updated versions of splash.html, admin.html, and howzit.py
+# in the current directory and copies them to the appropriate locations
+
+# ==============================
+# ASCII Header
+# ==============================
+ascii_header=" _                       _ _   _ 
+| |__   _____      _____(_) |_| |
+| '_ \ / _ \ \ /\ / /_  / | __| |
+| | | | (_) \ V  V / / /| | |_|_|
+|_| |_|\___/ \_/\_/ /___|_|\__(_)"
+echo "$ascii_header"
+echo -e "\n\033[32mHowzit Local Files Update Script - Version: 1.0.0\033[0m\n"
+
+# ==============================
+# Constants
+# ==============================
+TEMPLATE_DIR="/usr/local/bin/templates"
+APP_DIR="/usr/local/bin"
+STATIC_DIR="/usr/local/bin/static"
+
+# ==============================
+# Utility Functions
+# ==============================
+check_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo -e "\033[31mThis script must be run as root\033[0m"
+    exit 1
+  fi
+}
+
+restart_service() {
+  if systemctl is-active --quiet howzit.service; then
+    echo "Restarting Howzit service..."
+    systemctl restart howzit.service
+    echo "Service restarted."
+  else
+    echo "Howzit service is not running. No restart needed."
+  fi
+}
+
+# ==============================
+# Main Functions
+# ==============================
+update_templates() {
+  # Create template directory if it doesn't exist
+  mkdir -p "$TEMPLATE_DIR"
+
+  local updated=false
+
+  # Check for splash.html
+  if [ -f "splash.html" ]; then
+    echo "Found splash.html in current directory. Copying to $TEMPLATE_DIR"
+    cp "splash.html" "$TEMPLATE_DIR/"
+    updated=true
+  fi
+
+  # Check for admin.html
+  if [ -f "admin.html" ]; then
+    echo "Found admin.html in current directory. Copying to $TEMPLATE_DIR"
+    cp "admin.html" "$TEMPLATE_DIR/"
+    updated=true
+  fi
+
+  if [ "$updated" = true ]; then
+    echo -e "\033[32mTemplates updated successfully.\033[0m"
+  else
+    echo "No template files found in current directory."
+  fi
+}
+
+update_application() {
+  # Check for howzit.py
+  if [ -f "howzit.py" ]; then
+    echo "Found howzit.py in current directory. Comparing with installed version..."
+    
+    if [ -f "$APP_DIR/howzit.py" ]; then
+      # Get version from files
+      local current_version=$(grep -o "Version: [0-9]\+\.[0-9]\+\.[0-9]\+" "$APP_DIR/howzit.py" | cut -d' ' -f2)
+      local new_version=$(grep -o "Version: [0-9]\+\.[0-9]\+\.[0-9]\+" "howzit.py" | cut -d' ' -f2)
+      
+      if [ -z "$current_version" ] || [ -z "$new_version" ]; then
+        echo "Could not determine versions. Copying anyway."
+        cp "howzit.py" "$APP_DIR/"
+        chmod +x "$APP_DIR/howzit.py"
+        echo -e "\033[32mhowzit.py updated.\033[0m"
+        return 0
+      fi
+      
+      if [ "$(printf '%s\n' "$current_version" "$new_version" | sort -V | head -n1)" != "$new_version" ]; then
+        # New version is greater than current version
+        echo "Newer version found ($new_version > $current_version). Updating..."
+        cp "howzit.py" "$APP_DIR/"
+        chmod +x "$APP_DIR/howzit.py"
+        echo -e "\033[32mhowzit.py updated to version $new_version.\033[0m"
+      else
+        echo "Current version ($current_version) is the same or newer than the local file ($new_version). No update needed."
+      fi
+    else
+      echo "No existing howzit.py found. Installing..."
+      cp "howzit.py" "$APP_DIR/"
+      chmod +x "$APP_DIR/howzit.py"
+      echo -e "\033[32mhowzit.py installed.\033[0m"
+    fi
+  else
+    echo "No howzit.py found in current directory."
+  fi
+}
+
+# ==============================
+# Main Execution
+# ==============================
+main() {
+  check_root
+  
+  # Ensure directories exist
+  mkdir -p "$TEMPLATE_DIR"
+  mkdir -p "$STATIC_DIR"
+  chmod 755 "$STATIC_DIR"
+  
+  # Update templates and application
+  update_templates
+  update_application
+  
+  # Restart service if needed
+  if [ -f "$APP_DIR/howzit.py" ]; then
+    restart_service
+  fi
+  
+  echo -e "\n\033[32mUpdate process completed.\033[0m"
+}
+
+main "$@"
+EOF
+
+chmod +x /usr/local/bin/update_howzit.sh
+echo "Created update script at /usr/local/bin/update_howzit.sh"
+update_status $CURRENT_STEP $TOTAL_STEPS "Update script created."
+sleep 0.5
+CURRENT_STEP=$((CURRENT_STEP+1))
+
 echo "Reloading systemd and enabling Howzit service..."
 systemctl daemon-reload
 systemctl enable howzit.service
@@ -813,7 +1019,7 @@ echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
 echo "  Redirect Mode:            $REDIRECT_MODE"
 [ "$REDIRECT_MODE" == "fixed" ] && echo "  Fixed Redirect URL:       $FIXED_REDIRECT_URL"
 echo -e "\033[32m-----------------------------------------\033[0m"
-
-
-
-      
+echo ""
+echo "To update local files in the future, place updated versions of splash.html,"
+echo "admin.html, or howzit.py in the current directory and run:"
+echo -e "\033[1msudo /usr/local/bin/update_howzit.sh\033[0m"
