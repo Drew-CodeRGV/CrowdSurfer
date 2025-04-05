@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.3.2
+# Version: 3.3.3
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.2\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.3\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -137,7 +137,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="3.3.2"
+SCRIPT_VERSION="3.3.3"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
@@ -326,6 +326,9 @@ CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
 # Updated Flask instantiation to use the templates from /usr/local/bin/templates
 app = Flask(DEVICE_NAME, template_folder="/usr/local/bin/templates")
 
+# --- Global variables ---
+splash_header = "Welcome to the event!"
+
 # --- Captive Portal Detection Hook ---
 @app.before_request
 def captive_portal_detection():
@@ -344,7 +347,6 @@ csv_lock = threading.Lock()
 current_csv_filename = None
 last_submission_time = None
 email_timer = None
-splash_header = "Welcome to the event!"
 
 registered_clients = {}
 
@@ -444,6 +446,7 @@ def send_csv_via_email():
 
 @app.route("/", methods=["GET", "POST"])
 def splash():
+    global splash_header
     original_url = request.args.get("url", "")
     if request.method == "POST":
         original_url = request.form.get("url", original_url)
@@ -486,9 +489,11 @@ def splash():
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
-    import socket
+    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL
+    
     current_hostname = socket.gethostname()
     msg = ""
+    
     if request.method == "POST":
         if "hostname" in request.form:
             new_hostname = request.form.get("hostname")
@@ -499,11 +504,13 @@ def admin():
                     msg += "Hostname updated to " + new_hostname + ". "
                 except Exception as e:
                     msg += "Error updating hostname: " + str(e) + ". "
+        
         if "header" in request.form:
             new_header = request.form.get("header")
             if new_header:
                 splash_header = new_header
                 msg += "Splash header updated successfully. "
+        
         if "redirect_mode" in request.form:
             REDIRECT_MODE = request.form.get("redirect_mode")
             if REDIRECT_MODE == "fixed":
@@ -511,18 +518,21 @@ def admin():
             else:
                 FIXED_REDIRECT_URL = ""
             msg += "Redirect settings updated."
+    
     try:
         df = pd.read_csv(current_csv_filename)
+        total_registrations = len(df)
     except Exception:
-        df = pd.DataFrame(columns=["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date Registered", "Time Registered"])
-    total_registrations = len(df)
+        total_registrations = 0
+    
     return render_template("admin.html",
                            device_name=DEVICE_NAME,
                            current_hostname=current_hostname,
                            splash_header=splash_header,
                            redirect_mode=REDIRECT_MODE,
                            fixed_redirect_url=FIXED_REDIRECT_URL,
-                           total_registrations=total_registrations)
+                           total_registrations=total_registrations,
+                           msg=msg)
 
 @app.route("/admin/revoke", methods=["POST"])
 def revoke_leases():
@@ -622,7 +632,7 @@ echo "  Device Name:              $DEVICE_NAME"
 echo "  Captive Portal Interface: $CP_INTERFACE (IP: 10.69.0.1)"
 echo "  Internet Interface:       $INTERNET_INTERFACE"
 echo "  CSV Timeout:              $CSV_TIMEOUT sec"
-echo "  CSV will be emailed to:    $CSV_EMAIL"
+echo "  CSV will be emailed to:   $CSV_EMAIL"
 echo "  DHCP Pool:                10.69.0.10 - 10.69.0.254 (/24)"
 echo "  Lease Time:               15 minutes"
 echo "  DNS for DHCP Clients:     8.8.8.8 (primary), 10.69.0.1 (secondary)"
