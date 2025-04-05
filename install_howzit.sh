@@ -1,6 +1,6 @@
 #!/bin/bash
 # install_howzit.sh
-# Version: 3.3.0
+# Version: 3.3.1
 
 export DEBIAN_FRONTEND=noninteractive
 # Uncomment the following line for debugging:
@@ -15,7 +15,7 @@ ascii_header=" _                       _ _   _
 | | | | (_) \ V  V / / /| | |_|_|
 |_| |_|\___/ \_/\_/ /___|_|\__(_)"
 echo "$ascii_header"
-echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.0\033[0m\n"
+echo -e "\n\033[32mHowzit Captive Portal Installation Script - Version: 3.3.1\033[0m\n"
 
 # ==============================
 # Utility Functions
@@ -137,7 +137,7 @@ CURRENT_STEP=$((CURRENT_STEP+1))
 # ==============================
 print_section_header "Script Update Check"
 REMOTE_URL="https://raw.githubusercontent.com/Drew-CodeRGV/CrowdSurfer/main/install_howzit.sh"
-SCRIPT_VERSION="3.3.0"
+SCRIPT_VERSION="3.3.1"
 check_for_update() {
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y curl || true
