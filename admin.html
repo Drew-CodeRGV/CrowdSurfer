@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <!-- Auto-updated by Howzit Heartbeat - Version: 1.0.0 -->
+    <meta name="generator" content="Howzit Captive Portal">
+    <meta name="last-updated" content="2025-04-05">
     <title>{{ device_name }} - Admin</title>
     <style>
       body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #f7f7f7; text-align: center; padding-top: 50px; }
@@ -12,6 +15,12 @@
       img.logo-preview { max-width: 200px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto; }
       .message { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
       .error { background-color: #f8d7da; color: #721c24; }
+      .status-info { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px auto; max-width: 600px; text-align: left; }
+      .status-info h3 { margin-top: 0; }
+      .status-info table { width: 100%; border-collapse: collapse; }
+      .status-info table td { padding: 5px; border-bottom: 1px solid #ddd; }
+      .status-info table td:first-child { font-weight: bold; width: 40%; }
+      .template-footer { font-size: 10px; color: #999; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -46,5 +55,51 @@
 
     <h2>Download CSV</h2>
     <a href="/download_csv">Download CSV</a>
+    
+    <div class="status-info">
+        <h3>System Status</h3>
+        <table>
+            <tr>
+                <td>Device Name:</td>
+                <td>{{ device_name }}</td>
+            </tr>
+            <tr>
+                <td>Auto-Update Status:</td>
+                <td>Active (Templates check every 6 minutes)</td>
+            </tr>
+            <tr>
+                <td>Template Version:</td>
+                <td>1.0.0 (Auto-Updated)</td>
+            </tr>
+            <tr>
+                <td>Last Check:</td>
+                <td id="lastCheck">Checking...</td>
+            </tr>
+        </table>
+        <script>
+            // Get the last check time from the status file
+            fetch('/static/last_check.txt?' + new Date().getTime())
+                .then(response => {
+                    if (!response.ok) return "Unknown";
+                    return response.text();
+                })
+                .then(data => {
+                    try {
+                        const timestamp = parseInt(data.trim());
+                        const date = new Date(timestamp * 1000);
+                        document.getElementById('lastCheck').textContent = date.toLocaleString();
+                    } catch (e) {
+                        document.getElementById('lastCheck').textContent = "Unknown";
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('lastCheck').textContent = "Unknown";
+                });
+        </script>
+    </div>
+    
+    <div class="template-footer">
+        Howzit Captive Portal | Auto-Updated Template
+    </div>
 </body>
 </html>
