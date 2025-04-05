@@ -49,3 +49,4 @@ Howzit is a fully-functional captive portal solution designed for environments s
    Execute the script with root privileges:
    ```bash
    sudo bash install_howzit.sh
+
