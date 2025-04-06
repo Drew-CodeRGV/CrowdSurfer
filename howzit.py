@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Version: 3.3.6
 import os
 os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
 import time, random, threading, smtplib, csv, subprocess, re
@@ -19,6 +20,8 @@ REDIRECT_MODE = os.environ.get("REDIRECT_MODE", "original")
 FIXED_REDIRECT_URL = os.environ.get("FIXED_REDIRECT_URL", "")
 CP_INTERFACE = os.environ.get("CP_INTERFACE", "eth0")
 CSV_EMAIL = os.environ.get("CSV_EMAIL", "cs@drewlentz.com")
+WIFI_PASSWORD = os.environ.get("WIFI_PASSWORD", "crowdsurfer2024")
+WIFI_SSID = os.environ.get("WIFI_SSID", "CrowdSurfer WiFi")
 
 # Create upload folder for logo
 UPLOAD_FOLDER = '/usr/local/bin/static'
@@ -116,7 +119,7 @@ def init_csv():
     global current_csv_filename, last_submission_time, email_timer
     current_csv_filename = generate_csv_filename()
     with open(current_csv_filename, "w", newline="") as f:
-        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "MAC", "Date Registered", "Time Registered"])
+        csv.writer(f).writerow(["First Name", "Last Name", "Birthday", "Zip Code", "Email", "Gender", "MAC", "Date Registered", "Time Registered"])
     last_submission_time = time.time()
 
 def append_to_csv(data):
@@ -156,6 +159,53 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def generate_qr_code():
+    """Generate a QR code for WiFi connection"""
+    # Format the WiFi information in the standard format for QR WiFi connection
+    wifi_data = f"WIFI:S:{WIFI_SSID};T:WPA;P:{WIFI_PASSWORD};;"
+    
+    # QR code file path
+    qr_file_path = os.path.join(UPLOAD_FOLDER, "wifi_qr.png")
+    
+    try:
+        # First try using qrencode command-line tool if available
+        subprocess.run(['which', 'qrencode'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(['qrencode', '-o', qr_file_path, wifi_data], check=True)
+        return True
+    except (subprocess.SubprocessError, subprocess.CalledProcessError):
+        try:
+            # If qrencode command fails, try Python qrcode library
+            import qrcode
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECTION_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(wifi_data)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            img.save(qr_file_path)
+            return True
+        except ImportError:
+            # If qrcode module is not available, try installing it
+            try:
+                subprocess.run(['pip3', 'install', 'qrcode[pil]'], check=True)
+                import qrcode
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECTION_L,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(wifi_data)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                img.save(qr_file_path)
+                return True
+            except:
+                return False
+
 @app.route('/', methods=['GET', 'POST'])
 def splash():
     global splash_header
@@ -189,6 +239,7 @@ def splash():
                        request.form.get('birthday'),
                        request.form.get('zip_code'),
                        email,
+                       gender,
                        mac if mac else "unknown",
                        reg_date,
                        reg_time])
@@ -215,7 +266,7 @@ def splash():
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL, logo_filename
+    global splash_header, REDIRECT_MODE, FIXED_REDIRECT_URL, logo_filename, WIFI_PASSWORD, WIFI_SSID
     
     current_hostname = socket.gethostname()
     msg = ""
@@ -259,6 +310,26 @@ def admin():
                     msg += "Logo uploaded successfully. "
                 else:
                     msg += "Invalid file format. Please upload a .png, .jpg, .jpeg, or .gif file. "
+        
+        # Handle WiFi settings updates
+        if 'wifi_ssid' in request.form:
+            new_ssid = request.form.get('wifi_ssid')
+            if new_ssid:
+                WIFI_SSID = new_ssid
+                msg += "WiFi SSID updated. "
+                
+        if 'wifi_password' in request.form:
+            new_password = request.form.get('wifi_password')
+            if new_password:
+                WIFI_PASSWORD = new_password
+                msg += "WiFi password updated. "
+                
+        # Regenerate QR code if WiFi settings were updated
+        if 'wifi_ssid' in request.form or 'wifi_password' in request.form:
+            if generate_qr_code():
+                msg += "QR code updated. "
+            else:
+                msg += "Failed to generate QR code. Please ensure qrencode is installed. "
     
     # Add logo_url to context if logo exists
     logo_url = None
@@ -271,6 +342,11 @@ def admin():
     except Exception:
         total_registrations = 0
     
+    # Generate initial QR code if it doesn't exist
+    qr_file_path = os.path.join(UPLOAD_FOLDER, "wifi_qr.png")
+    if not os.path.exists(qr_file_path):
+        generate_qr_code()
+    
     return render_template('admin.html',
                           device_name=DEVICE_NAME,
                           current_hostname=current_hostname,
@@ -278,8 +354,25 @@ def admin():
                           redirect_mode=REDIRECT_MODE,
                           fixed_redirect_url=FIXED_REDIRECT_URL,
                           total_registrations=total_registrations,
+                          wifi_ssid=WIFI_SSID,
+                          wifi_password=WIFI_PASSWORD,
                           msg=msg,
                           logo_url=logo_url)
+
+@app.route('/qrc')
+def qr_code():
+    global splash_header
+    
+    # Generate QR code for WiFi network if it doesn't exist
+    qr_file_path = os.path.join(UPLOAD_FOLDER, "wifi_qr.png")
+    if not os.path.exists(qr_file_path):
+        if not generate_qr_code():
+            return "QR code generation failed. Please ensure 'qrencode' or 'qrcode' Python package is installed."
+    
+    return render_template('qrc.html', 
+                          splash_header=splash_header,
+                          wifi_password=WIFI_PASSWORD,
+                          wifi_ssid=WIFI_SSID)
 
 @app.route('/static/<filename>')
 def serve_static(filename):
@@ -313,6 +406,9 @@ def download_csv():
 
 # Initialize CSV file on import so that current_csv_filename is not None.
 init_csv()
+
+# Generate initial QR code
+generate_qr_code()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
