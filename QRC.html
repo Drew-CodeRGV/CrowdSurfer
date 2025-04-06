@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ splash_header }} - WiFi QR Code</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: #f7f7f7;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            justify-content: center;
+        }
+        .container {
+            padding: 20px;
+        }
+        h1 {
+            margin-bottom: 30px;
+        }
+        .qr-code {
+            margin: 20px auto;
+            max-width: 100%;
+            height: auto;
+        }
+        .qr-code img {
+            max-width: 100%;
+            height: auto;
+            max-height: 70vh;
+        }
+        .instructions {
+            margin-top: 30px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .instructions p {
+            text-align: left;
+        }
+        .instructions ul {
+            text-align: left;
+            margin-left: 20px;
+        }
+        @media (max-width: 768px) {
+            .qr-code img {
+                max-height: 50vh;
+            }
+        }
+        .fullscreen-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .fullscreen-button:hover {
+            background: #0056b3;
+        }
+        .fullscreen-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .fullscreen-container img {
+            max-width: 80%;
+            max-height: 80vh;
+        }
+        .exit-fullscreen {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .wifi-details {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ splash_header }}</h1>
+        <div class="qr-code">
+            <img src="/static/wifi_qr.png" alt="WiFi QR Code">
+        </div>
+        
+        <button class="fullscreen-button" onclick="showFullscreen()">Show Fullscreen QR Code</button>
+        
+        <div class="instructions">
+            <h2>Connect to {{ wifi_ssid }}</h2>
+            <p>Scan this QR code with your phone's camera to automatically connect to our WiFi network.</p>
+            <h3>Instructions:</h3>
+            <ul>
+                <li><strong>iPhone users:</strong> Open your Camera app and point it at the QR code</li>
+                <li><strong>Android users:</strong> Use your Camera app or QR code scanner</li>
+                <li>Tap the notification that appears to connect</li>
+                <li>If prompted, confirm you want to join the network</li>
+            </ul>
+            <p>Network: <strong>{{ wifi_ssid }}</strong></p>
+            <p>Password: <strong>{{ wifi_password }}</strong></p>
+        </div>
+    </div>
+    
+    <div id="fullscreenContainer" class="fullscreen-container">
+        <button class="exit-fullscreen" onclick="hideFullscreen()">Exit Fullscreen</button>
+        <img src="/static/wifi_qr.png" alt="WiFi QR Code">
+        <div class="wifi-details">
+            {{ wifi_ssid }}<br>
+            Password: {{ wifi_password }}
+        </div>
+    </div>
+    
+    <script>
+        function showFullscreen() {
+            document.getElementById('fullscreenContainer').style.display = 'flex';
+            
+            // Request fullscreen if supported
+            var elem = document.getElementById('fullscreenContainer');
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.mozRequestFullScreen) { /* Firefox */
+                elem.mozRequestFullScreen();
+            } else if (elem.webkitRequestFullscreen) { /* Chrome, Safari & Opera */
+                elem.webkitRequestFullscreen();
+            } else if (elem.msRequestFullscreen) { /* IE/Edge */
+                elem.msRequestFullscreen();
+            }
+        }
+        
+        function hideFullscreen() {
+            document.getElementById('fullscreenContainer').style.display = 'none';
+            
+            // Exit fullscreen if active
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.mozCancelFullScreen) { /* Firefox */
+                document.mozCancelFullScreen();
+            } else if (document.webkitExitFullscreen) { /* Chrome, Safari & Opera */
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) { /* IE/Edge */
+                document.msExitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
