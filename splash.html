@@ -4,125 +4,87 @@
     <!-- Auto-updated by Howzit Heartbeat - Version: 1.0.0 -->
     <meta name="generator" content="Howzit Captive Portal">
     <meta name="last-updated" content="2025-04-05">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ splash_header }}</title>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Playfair+Display:wght@700&display=swap');
-      
+      /* Using system fonts instead of web fonts for faster loading */
       body {
-        font-family: 'Playfair Display', serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         background: #1e0d30;
-        background-image: linear-gradient(45deg, #1e0d30 0%, #3d1a66 100%);
         text-align: center;
         margin: 0;
-        padding: 0;
+        padding: 20px;
         color: #333;
         min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        overflow-x: hidden;
       }
       
       .ticket-container {
         position: relative;
-        background: linear-gradient(135deg, #ffd700 0%, #f8c100 100%);
-        border: 8px solid #e5b800;
-        border-radius: 16px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 100px rgba(255,215,0,0.4);
-        padding: 40px;
-        margin: 40px auto;
+        background: #ffd700;
+        border: 6px solid #e5b800;
+        border-radius: 12px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        padding: 25px 20px;
+        margin: 20px auto;
         max-width: 500px;
-        transform: rotate(-1deg);
       }
       
-      .ticket-container::before {
-        content: '';
-        position: absolute;
-        top: -15px;
-        left: -15px;
-        right: -15px;
-        bottom: -15px;
-        background: transparent;
-        border: 2px dashed #9e7b0c;
-        border-radius: 20px;
-        z-index: -1;
-        opacity: 0.6;
-      }
-      
+      /* Simplified ticket edge */
       .ticket-edge {
         position: absolute;
-        top: 12px;
-        left: -8px;
-        right: -8px;
-        height: 16px;
+        top: 10px;
+        left: -6px;
+        right: -6px;
+        height: 6px;
+        background-color: #e5b800;
         background-image: 
           linear-gradient(90deg, 
-            transparent 0%, transparent 5%, 
-            #e5b800 5%, #e5b800 10%, 
-            transparent 10%, transparent 15%,
-            #e5b800 15%, #e5b800 20%,
-            transparent 20%, transparent 25%,
-            #e5b800 25%, #e5b800 30%,
-            transparent 30%, transparent 35%,
-            #e5b800 35%, #e5b800 40%,
-            transparent 40%, transparent 45%,
-            #e5b800 45%, #e5b800 50%,
-            transparent 50%, transparent 55%,
-            #e5b800 55%, #e5b800 60%,
-            transparent 60%, transparent 65%,
-            #e5b800 65%, #e5b800 70%,
-            transparent 70%, transparent 75%,
-            #e5b800 75%, #e5b800 80%,
-            transparent 80%, transparent 85%,
-            #e5b800 85%, #e5b800 90%,
-            transparent 90%, transparent 95%,
-            #e5b800 95%, #e5b800 100%
+            transparent 0%, transparent 10%, 
+            #ffd700 10%, #ffd700 20%, 
+            transparent 20%, transparent 30%,
+            #ffd700 30%, #ffd700 40%,
+            transparent 40%, transparent 50%,
+            #ffd700 50%, #ffd700 60%,
+            transparent 60%, transparent 70%,
+            #ffd700 70%, #ffd700 80%,
+            transparent 80%, transparent 90%,
+            #ffd700 90%, #ffd700 100%
           );
       }
       
       .ticket-edge-bottom {
         top: auto;
-        bottom: 12px;
+        bottom: 10px;
       }
       
       h1 {
-        font-family: 'Archivo Black', sans-serif;
         color: #780e0e;
-        font-size: 32px;
+        font-size: 24px;
         text-transform: uppercase;
         margin: 0 0 20px;
-        text-shadow: 2px 2px 0 #ffe066;
-        letter-spacing: 1px;
+        font-weight: bold;
       }
       
       .golden-seal {
         position: absolute;
-        top: -25px;
-        right: -25px;
-        width: 80px;
-        height: 80px;
-        background: radial-gradient(circle, #ffd700 0%, #b8860b 100%);
+        top: -15px;
+        right: -15px;
+        width: 60px;
+        height: 60px;
+        background: #ffd700;
+        border: 3px solid #b8860b;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         transform: rotate(15deg);
-        z-index: 2;
       }
       
       .golden-seal::before {
         content: "VIP";
-        font-family: 'Archivo Black', sans-serif;
         color: #780e0e;
-        font-size: 18px;
+        font-size: 16px;
         font-weight: bold;
-      }
-      
-      form {
-        position: relative;
-        z-index: 1;
       }
       
       .form-group {
@@ -144,91 +106,47 @@
       input[type='date'], 
       select {
         width: 100%;
-        padding: 12px 15px;
+        padding: 10px;
         border: 2px solid #780e0e;
-        border-radius: 8px;
-        background-color: rgba(255, 255, 255, 0.7);
+        border-radius: 6px;
+        background-color: rgba(255, 255, 255, 0.8);
         color: #333;
-        font-family: 'Playfair Display', serif;
         font-size: 16px;
-        transition: all 0.3s ease;
-      }
-      
-      input:focus, select:focus {
-        outline: none;
-        border-color: #780e0e;
-        box-shadow: 0 0 8px rgba(120, 14, 14, 0.5);
-        background-color: rgba(255, 255, 255, 0.9);
+        box-sizing: border-box;
       }
       
       input[type='submit'] {
-        background: linear-gradient(to bottom, #cc0000 0%, #780e0e 100%);
+        background: #cc0000;
         color: #fff;
-        padding: 15px 30px;
+        padding: 12px 20px;
         border: none;
-        border-radius: 50px;
+        border-radius: 30px;
         cursor: pointer;
-        font-size: 18px;
+        font-size: 16px;
         font-weight: bold;
         text-transform: uppercase;
-        letter-spacing: 1px;
         margin-top: 15px;
-        box-shadow: 0 5px 15px rgba(120, 14, 14, 0.4);
-        transition: all 0.3s ease;
-        font-family: 'Archivo Black', sans-serif;
+        width: 100%;
       }
       
       input[type='submit']:hover {
-        background: linear-gradient(to bottom, #ee0000 0%, #990000 100%);
-        transform: translateY(-3px);
-        box-shadow: 0 8px 20px rgba(120, 14, 14, 0.6);
-      }
-      
-      .stars {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: -1;
-      }
-      
-      .star {
-        position: absolute;
-        background-color: #ffd700;
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        animation: twinkle 1.5s infinite alternate;
-      }
-      
-      @keyframes twinkle {
-        0% { opacity: 0.2; }
-        100% { opacity: 1; }
+        background: #ee0000;
       }
       
       .success-message {
-        background: linear-gradient(135deg, #ffd700 0%, #f8c100 100%);
+        background: #ffd700;
         color: #780e0e;
-        padding: 30px;
+        padding: 20px;
         border-radius: 10px;
-        border: 4px solid #780e0e;
+        border: 3px solid #780e0e;
         margin-bottom: 20px;
-        font-size: 18px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        font-weight: bold;
       }
       
-      .music-notes {
+      .music-note {
+        font-size: 24px;
+        color: #ffd700;
         position: absolute;
-        font-size: 30px;
-        color: rgba(255, 215, 0, 0.3);
-        animation: float 3s ease-in-out infinite;
-      }
-      
-      @keyframes float {
-        0% { transform: translateY(0) rotate(0deg); }
-        50% { transform: translateY(-20px) rotate(10deg); }
-        100% { transform: translateY(0) rotate(0deg); }
       }
       
       .template-footer {
@@ -236,29 +154,14 @@
         color: rgba(255, 255, 255, 0.4);
         margin-top: 20px;
       }
-      
-      @media (max-width: 600px) {
-        .ticket-container {
-          width: 85%;
-          padding: 20px;
-        }
-        
-        h1 {
-          font-size: 24px;
-        }
-      }
     </style>
 </head>
 <body>
-    <div class="stars">
-      <!-- Stars will be added with JavaScript -->
-    </div>
-    
-    <!-- Floating music notes -->
-    <div class="music-notes" style="top: 10%; left: 10%;">♪</div>
-    <div class="music-notes" style="top: 15%; right: 15%; animation-delay: 0.5s;">♫</div>
-    <div class="music-notes" style="bottom: 20%; left: 20%; animation-delay: 1s;">♩</div>
-    <div class="music-notes" style="bottom: 15%; right: 10%; animation-delay: 1.5s;">♬</div>
+    <!-- Just 4 static music notes instead of animated ones -->
+    <div class="music-note" style="top: 10px; left: 10px;">♪</div>
+    <div class="music-note" style="top: 15px; right: 15px;">♫</div>
+    <div class="music-note" style="bottom: 20px; left: 20px;">♩</div>
+    <div class="music-note" style="bottom: 15px; right: 10px;">♬</div>
     
     <div class="ticket-container">
         <div class="golden-seal"></div>
@@ -266,7 +169,7 @@
         <div class="ticket-edge ticket-edge-bottom"></div>
         
         {% if logo_url %}
-            <img src="{{ logo_url }}" alt="Logo" style="max-width: 150px; margin-bottom: 15px;">
+            <img src="{{ logo_url }}" alt="Logo" style="max-width: 150px; max-height: 80px; margin-bottom: 15px;">
         {% endif %}
         
         <h1>{{ splash_header }}</h1>
@@ -340,25 +243,5 @@
     <div class="template-footer">
         Howzit Captive Portal | Auto-Updated Template
     </div>
-    
-    <script>
-      // Create twinkling stars in the background
-      const starsContainer = document.querySelector('.stars');
-      const starCount = 50;
-      
-      for (let i = 0; i < starCount; i++) {
-        const star = document.createElement('div');
-        star.classList.add('star');
-        
-        // Random position
-        star.style.left = Math.random() * 100 + '%';
-        star.style.top = Math.random() * 100 + '%';
-        
-        // Random delay
-        star.style.animationDelay = Math.random() * 2 + 's';
-        
-        starsContainer.appendChild(star);
-      }
-    </script>
 </body>
 </html>
